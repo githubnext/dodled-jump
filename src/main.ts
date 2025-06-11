@@ -434,19 +434,11 @@ function updateGame() {
 // Generate initial platforms
 generatePlatforms();
 
-// Create ambient particle system for depth and motion (improved infinite system)
+// Create ambient particle system for depth and motion (star-like particles)
 const particleCount = 200; // Increased back to 200 for better coverage
 const particleGeometry = new THREE.BufferGeometry();
 const particlePositions = new Float32Array(particleCount * 3); // Declare once here
-const particleColorsArray = new Float32Array(particleCount * 3); // Renamed from particleColors to avoid conflict
-
-// Pre-calculate some values for performance
-const particleColorCache = [];
-for (let i = 0; i < 20; i++) {
-  const color = new THREE.Color();
-  color.setHSL(i / 20, 1.0, 0.7); // Full saturation, bright
-  particleColorCache.push({ r: color.r, g: color.g, b: color.b });
-}
+const particleColorsArray = new Float32Array(particleCount * 3); // White star colors
 
 // Initialize particles
 for (let i = 0; i < particleCount; i++) {
@@ -457,12 +449,11 @@ for (let i = 0; i < particleCount; i++) {
   particlePositions[i3 + 1] = Math.random() * 80 - 40; // y - larger vertical spread around starting position
   particlePositions[i3 + 2] = (Math.random() - 0.5) * 15; // z - consistent with recycling range
 
-  // Use pre-cached colors for performance
-  const colorIndex = Math.floor(Math.random() * particleColorCache.length);
-  const cachedColor = particleColorCache[colorIndex];
-  particleColorsArray[i3] = cachedColor.r; // Use renamed array
-  particleColorsArray[i3 + 1] = cachedColor.g; // Use renamed array
-  particleColorsArray[i3 + 2] = cachedColor.b; // Use renamed array
+  // Set all particles to white with slight brightness variation for star-like effect
+  const brightness = 0.8 + Math.random() * 0.2; // Random brightness between 0.8 and 1.0
+  particleColorsArray[i3] = brightness; // R
+  particleColorsArray[i3 + 1] = brightness; // G  
+  particleColorsArray[i3 + 2] = brightness; // B
 }
 
 particleGeometry.setAttribute(
@@ -471,14 +462,14 @@ particleGeometry.setAttribute(
 );
 particleGeometry.setAttribute(
   "color",
-  new THREE.BufferAttribute(particleColorsArray, 3) // Use renamed array
+  new THREE.BufferAttribute(particleColorsArray, 3)
 );
 
 const particleMaterial = new THREE.PointsMaterial({
-  size: 0.12, // Slightly larger since we have fewer particles
+  size: 0.15, // Slightly larger for better star visibility
   vertexColors: true,
   transparent: true,
-  opacity: 0.7, // Slightly more opaque to compensate for fewer particles
+  opacity: 0.9, // Higher opacity for brighter stars
   blending: THREE.AdditiveBlending,
 });
 
