@@ -452,7 +452,7 @@ for (let i = 0; i < particleCount; i++) {
   // Set all particles to white with slight brightness variation for star-like effect
   const brightness = 0.8 + Math.random() * 0.2; // Random brightness between 0.8 and 1.0
   particleColorsArray[i3] = brightness; // R
-  particleColorsArray[i3 + 1] = brightness; // G  
+  particleColorsArray[i3 + 1] = brightness; // G
   particleColorsArray[i3 + 2] = brightness; // B
 }
 
