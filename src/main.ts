@@ -742,10 +742,10 @@ function updateGame() {
   // Update glitch effect
   if (gameState.glitch.active) {
     gameState.glitch.duration += 0.016; // roughly 60fps
-    
+
     // Calculate decay progress (0 = start, 1 = end)
     const progress = gameState.glitch.duration / gameState.glitch.maxDuration;
-    
+
     if (progress >= 1) {
       // Glitch effect finished
       gameState.glitch.active = false;
@@ -755,14 +755,17 @@ function updateGame() {
     } else {
       // Apply smooth easing with subtle flickering
       let easeOut = 1 - Math.pow(progress, 1.8); // Smooth falloff
-      
+
       // Add subtle flickering to the decay for some chaos but not too much
       const flicker = Math.sin(progress * 20.0) * 0.1 + 0.9; // Oscillation between 0.8-1.0
       easeOut *= flicker;
-      
-      glitchPass.uniforms.glitchIntensity.value = gameState.glitch.intensity * easeOut;
-      glitchPass.uniforms.digitalNoiseIntensity.value = gameState.glitch.digitalNoise * easeOut;
-      glitchPass.uniforms.rgbShiftIntensity.value = gameState.glitch.rgbShift * easeOut;
+
+      glitchPass.uniforms.glitchIntensity.value =
+        gameState.glitch.intensity * easeOut;
+      glitchPass.uniforms.digitalNoiseIntensity.value =
+        gameState.glitch.digitalNoise * easeOut;
+      glitchPass.uniforms.rgbShiftIntensity.value =
+        gameState.glitch.rgbShift * easeOut;
     }
   }
 
@@ -1057,7 +1060,7 @@ function animate() {
 
   // Update CRT shader time uniform for animated effects
   crtPass.uniforms.time.value = Date.now() * 0.001;
-  
+
   // Update glitch shader time uniform
   glitchPass.uniforms.time.value = Date.now() * 0.001;
 
