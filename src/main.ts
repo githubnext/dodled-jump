@@ -102,8 +102,9 @@ const gameState = {
     radius: 0.5, // For collision detection
     onGround: false,
   },
-  camera: {
-    targetY: 0,
+  world: {
+    offset: 0, // How much the world has moved down
+    targetOffset: 0, // Target world offset for smooth following
     smoothing: 0.05,
   },
   platforms: [] as Array<{
@@ -314,8 +315,9 @@ function updateGame() {
   const positions = particles.geometry.attributes.position
     .array as Float32Array;
 
-  const cameraCurrentX = camera.position.x;
-  const cameraY = camera.position.y;
+  // Fixed camera position (camera doesn't move)
+  const cameraCurrentX = 0; // Camera stays at origin
+  const cameraY = 0; // Camera stays at origin
 
   // Dynamically calculate particle spread based on camera's current FOV and aspect
   const distanceToParticlePlane = 10;
@@ -327,6 +329,11 @@ function updateGame() {
   const particleSpreadX = halfVisibleWidth * 1.5; // Increased horizontal spread
   const particleSpreadY = halfVisibleHeight * 2; // Increased vertical spread
   const particleSpreadZ = 10;
+
+  // Calculate downward particle movement based on player's upward velocity
+  const baseDownwardSpeed = 0; // Base speed particles move down
+  const velocityMultiplier = Math.max(0, gameState.player.velocity.y); // Extra speed based on upward velocity
+  const totalDownwardSpeed = baseDownwardSpeed + velocityMultiplier;
 
   for (let i = 0; i < particleCount; i++) {
     const i3 = i * 3;
@@ -343,10 +350,10 @@ function updateGame() {
     pY += Math.cos(phaseY) * 0.001; // y float
     pZ += Math.sin(phaseZ) * 0.0015; // z sway
 
-    // Add downward drift to create sense of upward movement
-    pY -= 0.01; // Constant downward drift
+    // Move particles downward to create illusion of upward motion
+    pY -= totalDownwardSpeed;
 
-    // Only respawn particles that fall below the visible area at the TOP
+    // Respawn particles that fall below the visible area at the TOP
     if (pY < cameraY - particleSpreadY) {
       // Respawn at top with random X and Z positions
       pY = cameraY + particleSpreadY + Math.random() * 5; // Spawn above visible area
@@ -375,22 +382,35 @@ function updateGame() {
 
   particles.geometry.attributes.position.needsUpdate = true;
 
-  // Smooth camera follow
-  gameState.camera.targetY = gameState.player.position.y;
-  camera.position.y +=
-    (gameState.camera.targetY - camera.position.y) * gameState.camera.smoothing;
+  // Smooth world offset follow - move world down as player goes up
+  gameState.world.targetOffset = -gameState.player.position.y;
+  gameState.world.offset +=
+    (gameState.world.targetOffset - gameState.world.offset) *
+    gameState.world.smoothing;
+
+  // Update all platform positions based on world offset
+  gameState.platforms.forEach((platform) => {
+    platform.mesh.position.y = platform.position.y + gameState.world.offset;
+  });
+
+  // Update copilot model position with world offset
+  if (copilotModel) {
+    copilotModel.position.x = gameState.player.position.x;
+    copilotModel.position.y =
+      gameState.player.position.y + gameState.world.offset;
+  }
 
   // Add subtle parallax effect based on player movement
-  camera.position.x += gameState.player.velocity.x * 0.3;
+  // No longer need to move camera, but we can add subtle screen shake or other effects here if desired
 
   // Generate more platforms as needed
   if (gameState.player.position.y > gameState.nextPlatformY - 20) {
     generatePlatforms();
   }
 
-  // Remove platforms that are too far below
+  // Remove platforms that are too far below (relative to player position)
   gameState.platforms = gameState.platforms.filter((platform) => {
-    if (platform.position.y < camera.position.y - 15) {
+    if (platform.position.y < gameState.player.position.y - 15) {
       scene.remove(platform.mesh);
       return false;
     }
@@ -400,16 +420,16 @@ function updateGame() {
   // Update score display
   scoreElement.textContent = `Score: ${gameState.score}`;
 
-  // Game over check (fell too far below screen)
-  if (gameState.player.position.y < camera.position.y - 10) {
+  // Game over check (fell too far below screen) - now relative to world position
+  if (gameState.player.position.y + gameState.world.offset < -10) {
     // Reset game
     gameState.player.position.x = 0;
     gameState.player.position.y = 0;
     gameState.player.velocity.x = 0;
     gameState.player.velocity.y = 0;
     gameState.score = 0;
-    camera.position.y = 0;
-    gameState.camera.targetY = 0;
+    gameState.world.offset = 0;
+    gameState.world.targetOffset = 0;
 
     // Clear platforms and regenerate
     gameState.platforms.forEach((platform) => scene.remove(platform.mesh));
@@ -418,7 +438,7 @@ function updateGame() {
     createPlatform(0, -2);
     generatePlatforms();
 
-    // Reset particle positions around the reset camera position
+    // Reset particle positions around the reset world position
     const positions = particles.geometry.attributes.position
       .array as Float32Array;
     for (let i = 0; i < particleCount; i++) {
@@ -564,7 +584,7 @@ scoreElement.style.top = "20px";
 scoreElement.style.left = "20px";
 scoreElement.style.color = "#c4ff00";
 scoreElement.style.fontSize = "24px";
-scoreElement.style.fontFamily = "monospace";
+scoreElement.style.fontFamily = "'DepartureMono', 'Courier New', monospace";
 scoreElement.style.zIndex = "1000";
 scoreElement.style.textShadow = "2px 2px 4px rgba(0,0,0,0.8)";
 scoreElement.textContent = "Score: 0";
@@ -577,7 +597,7 @@ instructionsElement.style.bottom = "20px";
 instructionsElement.style.left = "20px";
 instructionsElement.style.color = "#c4ff00";
 instructionsElement.style.fontSize = "16px";
-instructionsElement.style.fontFamily = "monospace";
+instructionsElement.style.fontFamily = "'DepartureMono', 'Courier New', monospace";
 instructionsElement.style.zIndex = "1000";
 instructionsElement.style.textShadow = "2px 2px 4px rgba(0,0,0,0.8)";
 instructionsElement.innerHTML =
