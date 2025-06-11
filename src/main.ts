@@ -410,17 +410,89 @@ scene.add(directionalLight2);
 const loader = new GLTFLoader();
 let copilotModel: THREE.Group | null = null;
 
-// Audio setup for sound effects
+// Audio setup for sound effects and background music
 let audioContext: AudioContext | null = null;
 let isAudioInitialized = false;
+let backgroundMusic: AudioBufferSourceNode | null = null;
+let musicBuffer: AudioBuffer | null = null;
+let musicGainNode: GainNode | null = null;
+
+// Load and decode the background music
+async function loadBackgroundMusic() {
+  if (!audioContext) return;
+  
+  try {
+    const response = await fetch('/8-bit-game-loop.wav');
+    const arrayBuffer = await response.arrayBuffer();
+    musicBuffer = await audioContext.decodeAudioData(arrayBuffer);
+    console.log('Background music loaded');
+  } catch (error) {
+    console.error('Error loading background music:', error);
+  }
+}
+
+// Start playing background music
+function startBackgroundMusic() {
+  if (!audioContext || !musicBuffer || backgroundMusic) return;
+  
+  try {
+    // Create gain node for volume control
+    musicGainNode = audioContext.createGain();
+    musicGainNode.gain.setValueAtTime(0.3, audioContext.currentTime); // Set volume to 30%
+    musicGainNode.connect(audioContext.destination);
+    
+    // Create and configure the audio source
+    backgroundMusic = audioContext.createBufferSource();
+    backgroundMusic.buffer = musicBuffer;
+    backgroundMusic.loop = true; // Enable seamless looping
+    backgroundMusic.connect(musicGainNode);
+    
+    // Handle when the music ends (shouldn't happen with loop, but just in case)
+    backgroundMusic.onended = () => {
+      backgroundMusic = null;
+      // Restart the music after a brief delay
+      setTimeout(startBackgroundMusic, 100);
+    };
+    
+    // Start playing
+    backgroundMusic.start(0);
+    console.log('Background music started');
+  } catch (error) {
+    console.error('Error starting background music:', error);
+  }
+}
+
+// Restart background music (for game resets)
+function restartBackgroundMusic() {
+  stopBackgroundMusic();
+  // Small delay to ensure cleanup, then restart
+  setTimeout(startBackgroundMusic, 100);
+}
+
+// Stop background music
+function stopBackgroundMusic() {
+  if (backgroundMusic) {
+    try {
+      backgroundMusic.stop();
+      backgroundMusic.disconnect();
+      backgroundMusic = null;
+    } catch (error) {
+      console.error('Error stopping background music:', error);
+    }
+  }
+}
 
 // Initialize audio context (must be done after user interaction)
-function initializeAudio() {
+async function initializeAudio() {
   if (!isAudioInitialized) {
     try {
       audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
       isAudioInitialized = true;
       console.log("Audio context initialized");
+      
+      // Load and start background music
+      await loadBackgroundMusic();
+      startBackgroundMusic();
     } catch (error) {
       console.warn("Web Audio API not supported:", error);
     }
@@ -851,7 +923,9 @@ createPlatform(0, -2);
 // Generate more platforms
 function generatePlatforms() {
   while (gameState.platforms.length < 50) {
-    const x = (Math.random() - 0.5) * 8; // Random x position within bounds
+    // Calculate viewport bounds for platform placement
+    const viewportHalfWidth = (camera.aspect * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.position.z);
+    const x = (Math.random() - 0.5) * (viewportHalfWidth * 1.8); // Use 90% of viewport width for platform placement
     createPlatform(x, gameState.nextPlatformY);
     // Use dynamic spacing that increases with difficulty
     const currentSpacing = getDifficultyPlatformSpacing();
@@ -994,11 +1068,12 @@ function updateGame() {
   gameState.player.position.x += gameState.player.velocity.x;
   gameState.player.position.y += gameState.player.velocity.y;
 
-  // Screen wrapping for horizontal movement
-  if (gameState.player.position.x > 6) {
-    gameState.player.position.x = -6;
-  } else if (gameState.player.position.x < -6) {
-    gameState.player.position.x = 6;
+  // Screen wrapping for horizontal movement - use actual viewport bounds
+  const viewportHalfWidth = (camera.aspect * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.position.z);
+  if (gameState.player.position.x > viewportHalfWidth) {
+    gameState.player.position.x = -viewportHalfWidth;
+  } else if (gameState.player.position.x < -viewportHalfWidth) {
+    gameState.player.position.x = viewportHalfWidth;
   }
 
   // Check platform collisions
@@ -1266,6 +1341,9 @@ function updateGame() {
   if (gameState.player.position.y + gameState.world.offset < -10) {
     // Play fall sound effect
     createFallSound();
+    
+    // Restart background music for fresh start
+    restartBackgroundMusic();
     
     // Reset game
     gameState.player.position.x = 0;
