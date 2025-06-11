@@ -1,0 +1,19 @@
+:root {
+  background-color: #242424; /* Keep background for contrast */
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  overflow: hidden; /* Prevent scrollbars */
+}
+
+#app {
+  width: 100vw;
+  height: 100vh;
+  display: block; /* Ensure #app behaves as a block and fills space */
+}
+
+canvas {
+  display: block; /* Prevent extra space below canvas */
+}
