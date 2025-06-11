@@ -597,7 +597,8 @@ instructionsElement.style.bottom = "20px";
 instructionsElement.style.left = "20px";
 instructionsElement.style.color = "#c4ff00";
 instructionsElement.style.fontSize = "16px";
-instructionsElement.style.fontFamily = "'DepartureMono', 'Courier New', monospace";
+instructionsElement.style.fontFamily =
+  "'DepartureMono', 'Courier New', monospace";
 instructionsElement.style.zIndex = "1000";
 instructionsElement.style.textShadow = "2px 2px 4px rgba(0,0,0,0.8)";
 instructionsElement.innerHTML =
