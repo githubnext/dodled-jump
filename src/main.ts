@@ -7,6 +7,7 @@ import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
+import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 
 // Set up the scene
 const scene = new THREE.Scene();
@@ -364,6 +365,15 @@ const pixelPass = new ShaderPass(PixelShader);
 pixelPass.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
 composer.addPass(pixelPass);
 
+// Add subtle bloom effect after pixelation for glowing elements
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  0.8, // Strength - more visible bloom
+  1.2, // Radius - wider spread
+  0.3 // Threshold - lower threshold so more elements bloom
+);
+composer.addPass(bloomPass);
+
 // Add glitch shader pass for platform hits
 const glitchPass = new ShaderPass(GlitchShader);
 glitchPass.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
@@ -531,16 +541,12 @@ function getDifficultyGravity(): number {
 // Platform geometry will be created dynamically based on difficulty
 // Made platforms deeper for 3D effect - width will vary based on score
 
-// High contrast, vibrant colors for platforms - limited palette for better visibility
+// Ultra-bright bloom-optimized colors for platforms - maximum glow effect with better variety
 const platformColors = [
-  0xff0080, // Hot pink/magenta - excellent contrast
-  0x00ff80, // Bright green - pops against dark background
-  0x0080ff, // Electric blue - great visibility
-  0xff8000, // Bright orange - warm contrast
-  0x80ff00, // Lime green - vibrant contrast
-  0xff4000, // Red-orange - strong visibility
-  0x4080ff, // Sky blue - cool contrast
-  0xff0040, // Deep pink - strong against dark
+  0x00ff00, // Pure lime green - maximum bloom intensity
+  0x00ffff, // Cyan - cool bright bloom
+  0xffff00, // Pure yellow - intense bloom
+  0xff8000, // Bright orange - warm bloom glow
 ];
 
 // Create platform material function to get different colors
@@ -1344,6 +1350,7 @@ window.addEventListener("resize", () => {
 
   // Update post-processing resolution
   composer.setSize(window.innerWidth, window.innerHeight);
+  bloomPass.setSize(window.innerWidth, window.innerHeight);
   pixelPass.uniforms.resolution.value.set(
     window.innerWidth,
     window.innerHeight
