@@ -11,6 +11,106 @@ import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
 // Set up the scene
 const scene = new THREE.Scene();
 
+// Create atmospheric space background
+function createSpaceBackground() {
+  // Create background geometry - a large sphere that encompasses the scene
+  const backgroundGeometry = new THREE.SphereGeometry(500, 32, 16);
+
+  // Create gradient material for nebula-like space atmosphere
+  const backgroundMaterial = new THREE.ShaderMaterial({
+    uniforms: {
+      time: { value: 0.0 },
+      resolution: {
+        value: new THREE.Vector2(window.innerWidth, window.innerHeight),
+      },
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      varying vec3 vPosition;
+      
+      void main() {
+        vUv = uv;
+        vPosition = position;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform float time;
+      uniform vec2 resolution;
+      varying vec2 vUv;
+      varying vec3 vPosition;
+      
+      // Noise function for atmospheric effects
+      float random(vec2 st) {
+        return fract(sin(dot(st.xy, vec2(12.9898, 78.233))) * 43758.5453123);
+      }
+      
+      float noise(vec2 st) {
+        vec2 i = floor(st);
+        vec2 f = fract(st);
+        float a = random(i);
+        float b = random(i + vec2(1.0, 0.0));
+        float c = random(i + vec2(0.0, 1.0));
+        float d = random(i + vec2(1.0, 1.0));
+        vec2 u = f * f * (3.0 - 2.0 * f);
+        return mix(a, b, u.x) + (c - a) * u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
+      }
+      
+      void main() {
+        vec2 uv = vUv;
+        
+        // Create vertical gradient from dark purple/blue at bottom to deep space at top
+        float gradientFactor = smoothstep(0.0, 1.0, uv.y);
+        
+        // Base colors for space atmosphere
+        vec3 deepSpace = vec3(0.02, 0.02, 0.08); // Very dark blue
+        vec3 nebulaPurple = vec3(0.12, 0.04, 0.15); // Dark purple
+        vec3 nebulaBlue = vec3(0.08, 0.12, 0.25); // Dark blue
+        
+        // Create base gradient
+        vec3 baseColor = mix(nebulaPurple, deepSpace, gradientFactor);
+        
+        // Add subtle noise for atmospheric variation
+        float noiseScale1 = 3.0;
+        float noiseScale2 = 8.0;
+        float n1 = noise(uv * noiseScale1 + time * 0.02);
+        float n2 = noise(uv * noiseScale2 + time * 0.015);
+        
+        // Combine noise layers
+        float atmosphericNoise = n1 * 0.6 + n2 * 0.4;
+        
+        // Create subtle color variations
+        vec3 colorVariation = mix(baseColor, nebulaBlue, atmosphericNoise * 0.3);
+        
+        // Add very subtle brightness variation
+        colorVariation *= 0.8 + atmosphericNoise * 0.4;
+        
+        // Add some distant "stars" - very sparse
+        float starNoise = noise(uv * 200.0);
+        if (starNoise > 0.98) {
+          colorVariation += vec3(0.3, 0.3, 0.4) * (starNoise - 0.98) * 50.0;
+        }
+        
+        gl_FragColor = vec4(colorVariation, 1.0);
+      }
+    `,
+    side: THREE.BackSide, // Render on the inside of the sphere
+    depthWrite: false,
+    depthTest: false,
+  });
+
+  const backgroundMesh = new THREE.Mesh(backgroundGeometry, backgroundMaterial);
+
+  // Make sure background renders first
+  backgroundMesh.renderOrder = -1;
+
+  return backgroundMesh;
+}
+
+// Create and add the space background
+const spaceBackground = createSpaceBackground();
+scene.add(spaceBackground);
+
 // Set up the camera
 const camera = new THREE.PerspectiveCamera(
   60, // Reduced FOV for more perspective depth
@@ -23,7 +123,7 @@ camera.position.set(0, 0, 10); // Moved camera back for better perspective
 // Set up the renderer
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setClearColor(0x222222); // Set a nice background color
+// Remove the solid background color - we'll use a gradient background instead
 
 // Set up post-processing
 const composer = new EffectComposer(renderer);
@@ -302,7 +402,7 @@ let copilotModel: THREE.Group | null = null;
 
 // Game state variables
 const gameState = {
-  gravity: -0.006, // Reduced gravity for more floaty feel
+  baseGravity: -0.006, // Base gravity for more floaty feel
   jumpVelocity: 0.25, // Slightly lower jump velocity for more natural arc
   moveSpeed: 0.15,
   player: {
@@ -333,6 +433,14 @@ const gameState = {
     size: { width: number; height: number };
     mesh: THREE.Mesh;
     colorIndex: number; // Store the color index for explosion matching
+    // Movement properties for difficulty progression
+    movement: {
+      enabled: boolean;
+      direction: number; // -1 for left, 1 for right
+      speed: number;
+      range: number; // How far it moves from center
+      centerX: number; // Original center position
+    };
   }>,
   explosions: [] as Array<{
     particles: THREE.Points;
@@ -349,23 +457,90 @@ const gameState = {
   },
 };
 
-// Platform geometry and material with shading
-const platformGeometry = new THREE.BoxGeometry(3, 0.3, 1); // Made platforms deeper for 3D effect
+// Difficulty progression functions
+function getDifficultyMovementChance(): number {
+  // Start with moving platforms after score 5 (much earlier)
+  if (gameState.score < 5) return 0;
 
-// Fun, bright colors for platforms - more saturated and vibrant
+  // More gradual increase in chance of moving platforms
+  // At score 5: 15% chance
+  // At score 10: 30% chance
+  // At score 20: 50% chance
+  // At score 35: 70% chance
+  // At score 50+: 85% chance (cap - slightly lower for balance)
+  const baseChance = Math.min(0.85, ((gameState.score - 5) / 45) * 0.7 + 0.15);
+  return baseChance;
+}
+
+function getDifficultyMovementSpeed(): number {
+  // Base speed after score 5 (much earlier)
+  if (gameState.score < 5) return 0;
+
+  // More gradual speed increase
+  // At score 5: 0.008 speed (slower start)
+  // At score 15: 0.016 speed
+  // At score 30: 0.024 speed
+  // At score 50+: 0.035 speed (cap - slightly lower for playability)
+  const baseSpeed = Math.min(
+    0.035,
+    0.008 + ((gameState.score - 5) / 45) * 0.027
+  );
+  return baseSpeed;
+}
+
+function getDifficultyPlatformSpacing(): number {
+  // Gradually increase platform spacing to make jumps harder
+  // At score 0: 3.5 spacing (easy)
+  // At score 10: 3.8 spacing
+  // At score 25: 4.2 spacing
+  // At score 40+: 4.6 spacing (cap - challenging but not impossible)
+  const baseSpacing = Math.min(4.6, 3.5 + (gameState.score / 40) * 1.1);
+  return baseSpacing;
+}
+
+function getDifficultyMovementRange(): number {
+  // Gradually increase how far platforms move
+  // At score 0: 2-3 range
+  // At score 20: 2-4 range
+  // At score 40+: 2-5 range (cap)
+  const baseRange = Math.min(5, 3 + (gameState.score / 40) * 2);
+  const minRange = 2;
+  return minRange + Math.random() * (baseRange - minRange);
+}
+
+function getDifficultyPlatformWidth(): number {
+  // Gradually decrease platform width to make precision more important
+  // At score 0: 3.0 width (easy)
+  // At score 25: 2.7 width
+  // At score 50+: 2.4 width (cap - still reasonable)
+  const minWidth = 2.4;
+  const maxWidth = 3.0;
+  const reduction = Math.min(0.6, (gameState.score / 50) * 0.6);
+  return Math.max(minWidth, maxWidth - reduction);
+}
+
+function getDifficultyGravity(): number {
+  // Slightly reduce gravity as score increases to make timing more precise
+  // At score 0: -0.006 gravity (base)
+  // At score 30: -0.0055 gravity
+  // At score 60+: -0.005 gravity (cap - still playable)
+  const gravityReduction = Math.min(0.001, (gameState.score / 60) * 0.001);
+  return gameState.baseGravity + gravityReduction; // Adding because baseGravity is negative
+}
+
+// Platform geometry will be created dynamically based on difficulty
+// Made platforms deeper for 3D effect - width will vary based on score
+
+// High contrast, vibrant colors for platforms - limited palette for better visibility
 const platformColors = [
-  0xffff00, // Bright yellow
-  0xff00ff, // Magenta
-  0x00ffff, // Cyan
-  0xff0000, // Pure red
-  0x00ff00, // Pure green
-  0x0000ff, // Pure blue
-  0xff8000, // Bright orange
-  0x8000ff, // Purple
-  0xff0080, // Hot pink
-  0x80ff00, // Lime
-  0x0080ff, // Sky blue
-  0xff4080, // Rose
+  0xff0080, // Hot pink/magenta - excellent contrast
+  0x00ff80, // Bright green - pops against dark background
+  0x0080ff, // Electric blue - great visibility
+  0xff8000, // Bright orange - warm contrast
+  0x80ff00, // Lime green - vibrant contrast
+  0xff4000, // Red-orange - strong visibility
+  0x4080ff, // Sky blue - cool contrast
+  0xff0040, // Deep pink - strong against dark
 ];
 
 // Create platform material function to get different colors
@@ -373,10 +548,10 @@ function createPlatformMaterial(colorIndex: number) {
   const color = platformColors[colorIndex % platformColors.length];
   return new THREE.MeshStandardMaterial({
     color: color,
-    roughness: 0.1, // Very smooth for maximum color pop
+    roughness: 0.05, // Even smoother for maximum color brightness
     metalness: 0.0, // No metallic properties for pure color
     emissive: color,
-    emissiveIntensity: 0.4, // Much higher emission for super bright colors
+    emissiveIntensity: 0.6, // Higher emission for super bright, glowing effect
   });
 }
 
@@ -450,9 +625,9 @@ function createExplosion(x: number, y: number, platformColor: number) {
 function triggerGlitch() {
   gameState.glitch.active = true;
   gameState.glitch.duration = 0;
-  gameState.glitch.intensity = 1.0 + Math.random() * 0.8; // More reasonable 1.0-1.8
-  gameState.glitch.digitalNoise = 0.4 + Math.random() * 0.3; // Toned down digital noise
-  gameState.glitch.rgbShift = 1.0 + Math.random() * 0.8; // More reasonable RGB shift
+  gameState.glitch.intensity = 0.8 + Math.random() * 0.6; // Balanced at 0.8-1.4
+  gameState.glitch.digitalNoise = 0.3 + Math.random() * 0.25; // Balanced digital noise 0.3-0.55
+  gameState.glitch.rgbShift = 0.8 + Math.random() * 0.6; // Balanced RGB shift 0.8-1.4
 }
 
 // Create initial platforms
@@ -460,11 +635,31 @@ function createPlatform(x: number, y: number) {
   // Use platform count to cycle through colors
   const colorIndex = gameState.platforms.length;
 
+  // Get difficulty-based properties
+  const shouldMove =
+    gameState.score >= 5 && Math.random() < getDifficultyMovementChance();
+  const movementSpeed = getDifficultyMovementSpeed();
+  const movementRange = getDifficultyMovementRange();
+  const platformWidth = getDifficultyPlatformWidth();
+
+  // Create geometry with dynamic width
+  const dynamicPlatformGeometry = new THREE.BoxGeometry(platformWidth, 0.3, 1);
+
   const platform = {
     position: { x, y },
-    size: { width: 3, height: 0.3 },
-    mesh: new THREE.Mesh(platformGeometry, createPlatformMaterial(colorIndex)),
+    size: { width: platformWidth, height: 0.3 },
+    mesh: new THREE.Mesh(
+      dynamicPlatformGeometry,
+      createPlatformMaterial(colorIndex)
+    ),
     colorIndex: colorIndex, // Store the color index for explosion matching
+    movement: {
+      enabled: shouldMove,
+      direction: Math.random() < 0.5 ? -1 : 1, // Random initial direction
+      speed: movementSpeed,
+      range: movementRange, // Use difficulty-based range
+      centerX: x, // Store original center position
+    },
   };
 
   platform.mesh.position.set(x, y, 0);
@@ -485,7 +680,9 @@ function generatePlatforms() {
   while (gameState.platforms.length < 50) {
     const x = (Math.random() - 0.5) * 8; // Random x position within bounds
     createPlatform(x, gameState.nextPlatformY);
-    gameState.nextPlatformY += gameState.platformSpacing;
+    // Use dynamic spacing that increases with difficulty
+    const currentSpacing = getDifficultyPlatformSpacing();
+    gameState.nextPlatformY += currentSpacing;
   }
 }
 
@@ -603,8 +800,8 @@ function updateGame() {
     gameState.player.velocity.x *= 0.9; // Friction
   }
 
-  // Apply gravity
-  gameState.player.velocity.y += gameState.gravity;
+  // Apply gravity (with difficulty scaling)
+  gameState.player.velocity.y += getDifficultyGravity();
 
   // Update player position
   gameState.player.position.x += gameState.player.velocity.x;
@@ -819,7 +1016,31 @@ function updateGame() {
 
   // Update all platform positions based on world offset
   gameState.platforms.forEach((platform) => {
+    // Update world offset position
     platform.mesh.position.y = platform.position.y + gameState.world.offset;
+
+    // Handle platform movement (side to side)
+    if (platform.movement.enabled) {
+      // Update platform position based on movement
+      platform.position.x +=
+        platform.movement.direction * platform.movement.speed;
+
+      // Check if platform has reached its movement range
+      const distanceFromCenter = Math.abs(
+        platform.position.x - platform.movement.centerX
+      );
+      if (distanceFromCenter >= platform.movement.range) {
+        // Reverse direction
+        platform.movement.direction *= -1;
+        // Clamp position to exact range to prevent drift
+        platform.position.x =
+          platform.movement.centerX +
+          platform.movement.direction * -1 * platform.movement.range;
+      }
+
+      // Update mesh position
+      platform.mesh.position.x = platform.position.x;
+    }
   });
 
   // Update explosion particles positions with world offset
@@ -852,7 +1073,7 @@ function updateGame() {
   });
 
   // Update score display
-  scoreElement.textContent = `Score: ${gameState.score}`;
+  scoreElement.textContent = `${gameState.score}`;
 
   // Game over check (fell too far below screen) - now relative to world position
   if (gameState.player.position.y + gameState.world.offset < -10) {
@@ -957,31 +1178,86 @@ loader.load(
   (gltf) => {
     copilotModel = gltf.scene;
 
-    // Array of brand colors to assign to different parts
-    const colors = [
-      0xc4ff00, // Bright lime green (main background)
-      0x9aff00, // Lime green (lighter variant)
-      0x7fff00, // Chartreuse green
-      0x32cd32, // Lime green (darker variant)
-      0xff69b4, // Hot pink (from pixel art character)
-      0xff1493, // Deep pink
-      0xff6347, // Tomato red
-      0x000000, // Black (from text)
-      0xffffff, // White (from pixel art character)
-      0x2f2f2f, // Dark gray
-      0xadff2f, // Green yellow
-      0x98fb98, // Pale green
+    // GitHub Copilot colors - updated per user specifications
+    const copilotColors = {
+      // Main body/head - lighter pink closer to purple
+      mainBody: 0xda70d6, // Orchid - lighter pink/purple for head
+      bodyHighlight: 0xe6a8e6, // Light orchid for highlights
+      bodyBase: 0xda70d6, // Orchid - goggle frame matches head
+      goggleGlass: 0x0a0a0a, // Dark like screen glass
+      ears: 0xc65cc6, // Slightly darker orchid for ears
+
+      // Face should be dark (screen), eyes should be bright blue
+      faceArea: 0x0a0a0a, // Very dark/black for screen
+      eyeSockets: 0x00bfff, // Bright blue for eyes
+      eyeDetails: 0x87ceeb, // Lighter blue for eye details
+
+      // Goggle and accent areas
+      noseAccent: 0x0a0a0a, // Dark for accent areas
+      highlights: 0x00bfff, // Bright blue highlights
+
+      // Additional variations for different parts
+      purpleLight: 0xe6a8e6, // Light orchid variations
+      purpleMid: 0xda70d6, // Orchid
+      purpleDark: 0xc65cc6, // Darker orchid
+      blueAccent: 0x00bfff, // Bright blue accent
+    };
+
+    // Array of colors to cycle through for different mesh parts
+    const colorArray = [
+      copilotColors.mainBody, // Primary body color
+      copilotColors.bodyHighlight, // Bright highlights
+      copilotColors.faceArea, // Dark face area
+      copilotColors.eyeSockets, // Light blue eyes
+      copilotColors.bodyBase, // Base/shadow areas
+      copilotColors.highlights, // Light blue details
+      copilotColors.purpleLight, // Light purple variations
+      copilotColors.eyeDetails, // Light blue eye details
+      copilotColors.purpleMid, // Medium purple areas
+      copilotColors.blueAccent, // Teal accents
+      copilotColors.purpleDark, // Dark purple areas
     ];
 
-    // Apply MeshBasicMaterial with different colors to each child
-    let colorIndex = 0;
+    // Apply colors with some logic based on mesh names if available
+    let meshIndex = 0;
     copilotModel.traverse((child) => {
       if (child instanceof THREE.Mesh) {
-        const color = colors[colorIndex % colors.length];
+        let selectedColor;
+
+        // Try to match colors based on mesh names if they exist
+        const meshName = child.name.toLowerCase();
+
+        if (meshName.includes("eye") || meshName.includes("socket")) {
+          selectedColor = copilotColors.eyeSockets; // Bright blue for eyes
+        } else if (meshName.includes("face") || meshName.includes("screen")) {
+          selectedColor = copilotColors.faceArea; // Dark/black for screen
+        } else if (meshName.includes("glass") || meshName.includes("lens")) {
+          selectedColor = copilotColors.goggleGlass; // Dark like screen glass
+        } else if (meshName.includes("goggle") || meshName.includes("frame")) {
+          selectedColor = copilotColors.bodyBase; // Orchid - goggle frame matches head
+        } else if (meshName.includes("ear")) {
+          selectedColor = copilotColors.ears; // Slightly darker orchid for ears
+        } else if (meshName.includes("head") || meshName.includes("body")) {
+          selectedColor = copilotColors.mainBody; // Orchid for head
+        } else if (meshName.includes("nose") || meshName.includes("mouth")) {
+          selectedColor = copilotColors.noseAccent; // Dark for accent areas
+        } else if (
+          meshName.includes("highlight") ||
+          meshName.includes("light")
+        ) {
+          selectedColor = copilotColors.bodyHighlight; // Light orchid highlights
+        } else if (meshName.includes("base") || meshName.includes("dark")) {
+          selectedColor = copilotColors.purpleDark; // Darker orchid
+        } else {
+          // Use array cycling for unnamed or generic parts
+          selectedColor = colorArray[meshIndex % colorArray.length];
+        }
+
         child.material = new THREE.MeshBasicMaterial({
-          color: color,
+          color: selectedColor,
         });
-        colorIndex++;
+
+        meshIndex++;
       }
     });
 
@@ -1002,8 +1278,10 @@ loader.load(
     copilotModel.position.set(0, 0, 0);
 
     scene.add(copilotModel);
-    console.log("Copilot model loaded successfully!");
-    console.log(`Applied colors to ${colorIndex} mesh children`);
+    console.log(
+      "Copilot model loaded successfully with GitHub Copilot colors!"
+    );
+    console.log(`Applied GitHub Copilot colors to ${meshIndex} mesh parts`);
   },
   (progress) => {
     console.log(
@@ -1027,29 +1305,14 @@ loader.load(
 const scoreElement = document.createElement("div");
 scoreElement.style.position = "fixed";
 scoreElement.style.top = "20px";
-scoreElement.style.left = "20px";
+scoreElement.style.right = "20px"; // Changed from left to right
 scoreElement.style.color = "#c4ff00";
-scoreElement.style.fontSize = "24px";
+scoreElement.style.fontSize = "40px";
 scoreElement.style.fontFamily = "'DepartureMono', 'Courier New', monospace";
 scoreElement.style.zIndex = "1000";
 scoreElement.style.textShadow = "2px 2px 4px rgba(0,0,0,0.8)";
-scoreElement.textContent = "Score: 0";
+scoreElement.textContent = "0";
 document.body.appendChild(scoreElement);
-
-// Add instructions
-const instructionsElement = document.createElement("div");
-instructionsElement.style.position = "fixed";
-instructionsElement.style.bottom = "20px";
-instructionsElement.style.left = "20px";
-instructionsElement.style.color = "#c4ff00";
-instructionsElement.style.fontSize = "16px";
-instructionsElement.style.fontFamily =
-  "'DepartureMono', 'Courier New', monospace";
-instructionsElement.style.zIndex = "1000";
-instructionsElement.style.textShadow = "2px 2px 4px rgba(0,0,0,0.8)";
-instructionsElement.innerHTML =
-  "Use ← → arrow keys or A/D to move<br>Jump on platforms to go higher!";
-document.body.appendChild(instructionsElement);
 
 // Animation loop
 function animate() {
@@ -1057,6 +1320,10 @@ function animate() {
 
   // Update game logic
   updateGame();
+
+  // Update space background animation
+  const backgroundMaterial = spaceBackground.material as THREE.ShaderMaterial;
+  backgroundMaterial.uniforms.time.value = Date.now() * 0.001;
 
   // Update CRT shader time uniform for animated effects
   crtPass.uniforms.time.value = Date.now() * 0.001;
