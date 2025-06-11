@@ -60,10 +60,219 @@ const PixelShader = {
   `,
 };
 
+// Digital Glitch shader for platform hits
+const GlitchShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    resolution: { value: new THREE.Vector2() },
+    time: { value: 0.0 },
+    glitchIntensity: { value: 0.0 },
+    digitalNoiseIntensity: { value: 0.0 },
+    rgbShiftIntensity: { value: 0.0 },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform vec2 resolution;
+    uniform float time;
+    uniform float glitchIntensity;
+    uniform float digitalNoiseIntensity;
+    uniform float rgbShiftIntensity;
+    varying vec2 vUv;
+    
+    // Random function for glitch effects
+    float random(vec2 st) {
+      return fract(sin(dot(st.xy, vec2(12.9898, 78.233))) * 43758.5453123);
+    }
+    
+    // Digital block noise
+    float digitalNoise(vec2 uv, float scale) {
+      vec2 grid = floor(uv * scale);
+      return random(grid + time);
+    }
+    
+    void main() {
+      vec2 uv = vUv;
+      
+      // Moderate horizontal glitch lines
+      float glitchLine = digitalNoise(vec2(0.0, uv.y), 15.0 + time * 6.0);
+      if (glitchLine > 0.8 && glitchIntensity > 0.1) {
+        // Moderate horizontal displacement
+        uv.x += (random(vec2(uv.y, time)) - 0.5) * glitchIntensity * 0.15;
+      }
+      
+      // Moderate RGB shift
+      vec2 redShift = uv + vec2(rgbShiftIntensity * 0.02, 0.0);
+      vec2 blueShift = uv - vec2(rgbShiftIntensity * 0.02, 0.0);
+      
+      float r = texture2D(tDiffuse, redShift).r;
+      float g = texture2D(tDiffuse, uv).g;
+      float b = texture2D(tDiffuse, blueShift).b;
+      
+      vec3 color = vec3(r, g, b);
+      
+      // Moderate digital noise overlay
+      if (digitalNoiseIntensity > 0.0) {
+        float noise = digitalNoise(uv, 60.0);
+        if (noise > 0.9) {
+          // Create subtle colored digital noise
+          vec3 noiseColor = vec3(
+            random(uv + time),
+            random(uv + time + 1.0),
+            random(uv + time + 2.0)
+          );
+          color = mix(color, noiseColor, digitalNoiseIntensity * 0.5);
+        }
+      }
+      
+      // Moderate datamoshing effect
+      if (glitchIntensity > 0.7) {
+        float moshLine = digitalNoise(vec2(0.0, uv.y), 8.0);
+        if (moshLine > 0.7) {
+          vec2 moshUV = uv;
+          moshUV.x += sin(uv.y * 25.0 + time * 12.0) * glitchIntensity * 0.08;
+          color = mix(color, texture2D(tDiffuse, moshUV).rgb, 0.6);
+        }
+      }
+      
+      // Subtle screen tearing effect (only for higher intensities)
+      if (glitchIntensity > 1.2) {
+        float tearLine = digitalNoise(vec2(0.0, uv.y), 6.0);
+        if (tearLine > 0.85) {
+          uv.y += (random(vec2(uv.x, time)) - 0.5) * glitchIntensity * 0.05;
+          color = texture2D(tDiffuse, uv).rgb;
+        }
+      }
+      
+      // Very subtle color channel corruption (only for highest intensities)
+      if (glitchIntensity > 1.5) {
+        float corruptLine = digitalNoise(vec2(0.0, uv.y), 12.0);
+        if (corruptLine > 0.95) {
+          // Occasionally swap color channels
+          float channelCorrupt = random(vec2(uv.y, time));
+          if (channelCorrupt > 0.8) {
+            color = color.gbr; // Swap channels
+          }
+        }
+      }
+      
+      gl_FragColor = vec4(color, 1.0);
+    }
+  `,
+};
+
+// CRT + RGB separation shader for retro effect
+const CRTShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    resolution: { value: new THREE.Vector2() },
+    time: { value: 0.0 },
+    aberrationStrength: { value: 0.003 },
+    scanlineIntensity: { value: 0.6 }, // Increased from 0.4 for more visible scanlines
+    vignetteStrength: { value: 0.3 },
+    noiseIntensity: { value: 0.08 },
+    curvature: { value: 0.15 },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform vec2 resolution;
+    uniform float time;
+    uniform float aberrationStrength;
+    uniform float scanlineIntensity;
+    uniform float vignetteStrength;
+    uniform float noiseIntensity;
+    uniform float curvature;
+    varying vec2 vUv;
+    
+    // Random function for noise
+    float random(vec2 st) {
+      return fract(sin(dot(st.xy, vec2(12.9898, 78.233))) * 43758.5453123);
+    }
+    
+    // CRT barrel distortion
+    vec2 barrelDistortion(vec2 coord, float amount) {
+      vec2 cc = coord - 0.5;
+      float dist = dot(cc, cc);
+      return coord + cc * dist * amount;
+    }
+    
+    void main() {
+      vec2 uv = vUv;
+      
+      // Apply barrel distortion for CRT curvature
+      uv = barrelDistortion(uv, curvature);
+      
+      // Clamp to avoid sampling outside texture
+      if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
+        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+        return;
+      }
+      
+      // RGB chromatic aberration
+      float r = texture2D(tDiffuse, uv + vec2(aberrationStrength, 0.0)).r;
+      float g = texture2D(tDiffuse, uv).g;
+      float b = texture2D(tDiffuse, uv - vec2(aberrationStrength, 0.0)).b;
+      
+      vec3 color = vec3(r, g, b);
+      
+      // Enhanced scanlines with movement
+      float scanlineFreq = resolution.y * 0.5; // Adjust frequency based on resolution
+      float scanlineOffset = time * 2.0; // Slow scrolling scanlines
+      float scanline = sin((uv.y * scanlineFreq + scanlineOffset) * 3.14159);
+      scanline = smoothstep(0.0, 1.0, scanline * 0.5 + 0.5);
+      
+      // Add alternating scanline intensity for more authentic CRT look
+      float alternatingScanline = sin(uv.y * scanlineFreq * 2.0) * 0.5 + 0.5;
+      scanline = mix(scanline, alternatingScanline, 0.3);
+      
+      color *= 1.0 - scanlineIntensity + scanlineIntensity * scanline;
+      
+      // Vignette effect
+      vec2 vignetteUV = uv * (1.0 - uv.yx);
+      float vignette = vignetteUV.x * vignetteUV.y * 15.0;
+      vignette = pow(vignette, vignetteStrength);
+      color *= vignette;
+      
+      // TV noise
+      float noise = random(uv + time * 0.1) * noiseIntensity;
+      color += noise;
+      
+      // Subtle color boost for retro feel
+      color = pow(color, vec3(0.9));
+      color *= 1.1;
+      
+      gl_FragColor = vec4(color, 1.0);
+    }
+  `,
+};
+
 // Add pixelation pass
 const pixelPass = new ShaderPass(PixelShader);
 pixelPass.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
 composer.addPass(pixelPass);
+
+// Add glitch shader pass for platform hits
+const glitchPass = new ShaderPass(GlitchShader);
+glitchPass.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
+composer.addPass(glitchPass);
+
+// Add CRT shader pass for retro RGB effects
+const crtPass = new ShaderPass(CRTShader);
+crtPass.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
+composer.addPass(crtPass);
 
 const appElement = document.querySelector<HTMLDivElement>("#app");
 if (appElement) {
@@ -101,16 +310,35 @@ const gameState = {
     position: { x: 0, y: 0 },
     radius: 0.5, // For collision detection
     onGround: false,
+    spinning: false,
+    spinAxis: new THREE.Vector3(),
+    spinProgress: 0,
+    spinSpeed: 0.015, // Speed of the spin animation - much slower for a controlled trick effect
   },
   world: {
     offset: 0, // How much the world has moved down
     targetOffset: 0, // Target world offset for smooth following
     smoothing: 0.05,
   },
+  glitch: {
+    active: false,
+    intensity: 0,
+    digitalNoise: 0,
+    rgbShift: 0,
+    duration: 0,
+    maxDuration: 0.35, // Slightly shorter - 350ms
+  },
   platforms: [] as Array<{
     position: { x: number; y: number };
     size: { width: number; height: number };
     mesh: THREE.Mesh;
+    colorIndex: number; // Store the color index for explosion matching
+  }>,
+  explosions: [] as Array<{
+    particles: THREE.Points;
+    velocities: Float32Array;
+    life: number;
+    maxLife: number;
   }>,
   nextPlatformY: 2,
   platformSpacing: 3.5, // Increased from 2.5 for more spacing
@@ -152,6 +380,81 @@ function createPlatformMaterial(colorIndex: number) {
   });
 }
 
+// Create explosion particle system
+function createExplosion(x: number, y: number, platformColor: number) {
+  const explosionParticleCount = 12; // Reduced for more subtle effect
+  const explosionGeometry = new THREE.BufferGeometry();
+  const explosionPositions = new Float32Array(explosionParticleCount * 3);
+  const explosionColors = new Float32Array(explosionParticleCount * 3);
+  const explosionVelocities = new Float32Array(explosionParticleCount * 3);
+
+  // Get RGB values from the platform color
+  const color = new THREE.Color(platformColor);
+
+  for (let i = 0; i < explosionParticleCount; i++) {
+    const i3 = i * 3;
+
+    // Start all particles at collision point
+    explosionPositions[i3] = x;
+    explosionPositions[i3 + 1] = y;
+    explosionPositions[i3 + 2] = 0;
+
+    // Smaller, more subtle velocities
+    const angle =
+      (i / explosionParticleCount) * Math.PI * 2 + (Math.random() - 0.5) * 0.4; // Less spread
+    const speed = 0.08 + Math.random() * 0.1; // Slower, more subtle particles
+    explosionVelocities[i3] = Math.cos(angle) * speed;
+    explosionVelocities[i3 + 1] = Math.sin(angle) * speed + 0.05; // Less upward bias
+    explosionVelocities[i3 + 2] = (Math.random() - 0.5) * 0.04; // Less z movement
+
+    // Use platform color with subtle brightness variation
+    const brightness = 0.8 + Math.random() * 0.2;
+    explosionColors[i3] = color.r * brightness;
+    explosionColors[i3 + 1] = color.g * brightness;
+    explosionColors[i3 + 2] = color.b * brightness;
+  }
+
+  explosionGeometry.setAttribute(
+    "position",
+    new THREE.BufferAttribute(explosionPositions, 3)
+  );
+  explosionGeometry.setAttribute(
+    "color",
+    new THREE.BufferAttribute(explosionColors, 3)
+  );
+
+  const explosionMaterial = new THREE.PointsMaterial({
+    size: 0.2, // Much smaller, more subtle particles
+    vertexColors: true,
+    transparent: true,
+    opacity: 0.8, // Slightly transparent for subtlety
+    blending: THREE.AdditiveBlending,
+  });
+
+  const explosionParticles = new THREE.Points(
+    explosionGeometry,
+    explosionMaterial
+  );
+  scene.add(explosionParticles);
+
+  // Add to explosion tracking
+  gameState.explosions.push({
+    particles: explosionParticles,
+    velocities: explosionVelocities,
+    life: 0,
+    maxLife: 0.8, // Shorter lifetime for more subtle effect
+  });
+}
+
+// Trigger glitch effect
+function triggerGlitch() {
+  gameState.glitch.active = true;
+  gameState.glitch.duration = 0;
+  gameState.glitch.intensity = 1.0 + Math.random() * 0.8; // More reasonable 1.0-1.8
+  gameState.glitch.digitalNoise = 0.4 + Math.random() * 0.3; // Toned down digital noise
+  gameState.glitch.rgbShift = 1.0 + Math.random() * 0.8; // More reasonable RGB shift
+}
+
 // Create initial platforms
 function createPlatform(x: number, y: number) {
   // Use platform count to cycle through colors
@@ -161,6 +464,7 @@ function createPlatform(x: number, y: number) {
     position: { x, y },
     size: { width: 3, height: 0.3 },
     mesh: new THREE.Mesh(platformGeometry, createPlatformMaterial(colorIndex)),
+    colorIndex: colorIndex, // Store the color index for explosion matching
   };
 
   platform.mesh.position.set(x, y, 0);
@@ -211,6 +515,31 @@ function checkPlatformCollision() {
       gameState.player.velocity.y = gameState.jumpVelocity;
       gameState.player.onGround = true;
       gameState.player.position.y = platformTop + playerRadius;
+
+      // Create explosion at collision point
+      const explosionX = playerX;
+      const explosionY = platformTop; // Right at the platform surface
+      const platformColor =
+        platformColors[platform.colorIndex % platformColors.length];
+      createExplosion(explosionX, explosionY, platformColor);
+
+      // Trigger glitch effect on platform hit
+      triggerGlitch();
+
+      // Start spin effect with random axis (only 20% chance)
+      if (Math.random() < 0.2) {
+        gameState.player.spinning = true;
+        gameState.player.spinProgress = 0;
+
+        // Generate a random spin axis (normalized)
+        gameState.player.spinAxis
+          .set(
+            (Math.random() - 0.5) * 2,
+            (Math.random() - 0.5) * 2,
+            (Math.random() - 0.5) * 2
+          )
+          .normalize();
+      }
 
       // Update score based on height
       const currentScore = Math.floor(
@@ -291,24 +620,52 @@ function updateGame() {
   // Check platform collisions
   checkPlatformCollision();
 
+  // Reset onGround flag for next frame
+  gameState.player.onGround = false;
+
   // Update copilot model position
   copilotModel.position.x = gameState.player.position.x;
   copilotModel.position.y = gameState.player.position.y;
 
-  // Make the head face the direction of movement
-  if (Math.abs(gameState.player.velocity.x) > 0.01) {
-    // Smoothly rotate the head based on movement direction
-    const targetRotationY = gameState.player.velocity.x > 0 ? -0.3 : 0.3;
-    copilotModel.rotation.y +=
-      (targetRotationY - copilotModel.rotation.y) * 0.1;
-  } else {
-    // Return to center when not moving horizontally
-    copilotModel.rotation.y += (0 - copilotModel.rotation.y) * 0.1;
-  }
+  // Handle spinning animation
+  if (gameState.player.spinning) {
+    gameState.player.spinProgress += gameState.player.spinSpeed;
 
-  // Add subtle bobbing based on vertical velocity for more natural feel
-  const bobbingOffset = Math.sin(Date.now() * 0.005) * 0.05;
-  copilotModel.rotation.z = gameState.player.velocity.y * 0.5 + bobbingOffset;
+    // Apply easing function for smooth spin animation
+    // Using smoothstep for ease-in-out effect: 3t² - 2t³
+    const t = Math.min(gameState.player.spinProgress, 1);
+    const easedProgress = t * t * (3 - 2 * t);
+
+    // Create rotation around the random axis with easing
+    const spinAngle = easedProgress * Math.PI * 2; // Full 360 degree spin with easing
+
+    // Apply rotation around the random axis
+    copilotModel.setRotationFromAxisAngle(gameState.player.spinAxis, spinAngle);
+
+    // Stop spinning after one full rotation
+    if (gameState.player.spinProgress >= 1) {
+      gameState.player.spinning = false;
+      gameState.player.spinProgress = 0;
+      // Reset rotation to identity
+      copilotModel.rotation.set(0, 0, 0);
+    }
+  } else {
+    // Make the head face the direction of movement (only when not spinning)
+    if (Math.abs(gameState.player.velocity.x) > 0.01) {
+      // Smoothly rotate the head based on movement direction - increased rotation for more dramatic effect
+      const targetRotationY = gameState.player.velocity.x > 0 ? 0.8 : -0.8;
+      copilotModel.rotation.y +=
+        (targetRotationY - copilotModel.rotation.y) * 0.1;
+    } else {
+      // Return to center when not moving horizontally
+      copilotModel.rotation.y += (0 - copilotModel.rotation.y) * 0.1;
+    }
+
+    // Reset X rotation and add subtle bobbing based on vertical velocity
+    copilotModel.rotation.x = 0;
+    const bobbingOffset = Math.sin(Date.now() * 0.005) * 0.05;
+    copilotModel.rotation.z = gameState.player.velocity.y * 0.5 + bobbingOffset;
+  }
 
   // Animate particles for depth and motion
   particleTime += 0.016; // roughly 60fps
@@ -382,6 +739,75 @@ function updateGame() {
 
   particles.geometry.attributes.position.needsUpdate = true;
 
+  // Update glitch effect
+  if (gameState.glitch.active) {
+    gameState.glitch.duration += 0.016; // roughly 60fps
+    
+    // Calculate decay progress (0 = start, 1 = end)
+    const progress = gameState.glitch.duration / gameState.glitch.maxDuration;
+    
+    if (progress >= 1) {
+      // Glitch effect finished
+      gameState.glitch.active = false;
+      glitchPass.uniforms.glitchIntensity.value = 0;
+      glitchPass.uniforms.digitalNoiseIntensity.value = 0;
+      glitchPass.uniforms.rgbShiftIntensity.value = 0;
+    } else {
+      // Apply smooth easing with subtle flickering
+      let easeOut = 1 - Math.pow(progress, 1.8); // Smooth falloff
+      
+      // Add subtle flickering to the decay for some chaos but not too much
+      const flicker = Math.sin(progress * 20.0) * 0.1 + 0.9; // Oscillation between 0.8-1.0
+      easeOut *= flicker;
+      
+      glitchPass.uniforms.glitchIntensity.value = gameState.glitch.intensity * easeOut;
+      glitchPass.uniforms.digitalNoiseIntensity.value = gameState.glitch.digitalNoise * easeOut;
+      glitchPass.uniforms.rgbShiftIntensity.value = gameState.glitch.rgbShift * easeOut;
+    }
+  }
+
+  // Update explosions
+  for (let i = gameState.explosions.length - 1; i >= 0; i--) {
+    const explosion = gameState.explosions[i];
+    explosion.life += 0.016; // roughly 60fps
+
+    const positions = explosion.particles.geometry.attributes.position
+      .array as Float32Array;
+    const velocities = explosion.velocities;
+    const material = explosion.particles.material as THREE.PointsMaterial;
+
+    // Update particle positions and apply gravity/drag
+    for (let j = 0; j < positions.length; j += 3) {
+      // Apply velocity
+      positions[j] += velocities[j]; // x
+      positions[j + 1] += velocities[j + 1]; // y
+      positions[j + 2] += velocities[j + 2]; // z
+
+      // Apply drag and gravity
+      velocities[j] *= 0.98; // x drag
+      velocities[j + 1] *= 0.98; // y drag
+      velocities[j + 1] -= 0.003; // gravity
+      velocities[j + 2] *= 0.98; // z drag
+    }
+
+    explosion.particles.geometry.attributes.position.needsUpdate = true;
+
+    // Fade out over time
+    const fadeProgress = explosion.life / explosion.maxLife;
+    material.opacity = Math.max(0, 1 - fadeProgress);
+    material.size = 0.3 * (1 - fadeProgress * 0.5); // Shrink particles
+
+    // Remove expired explosions
+    if (explosion.life >= explosion.maxLife) {
+      scene.remove(explosion.particles);
+      explosion.particles.geometry.dispose();
+      if (explosion.particles.material instanceof THREE.Material) {
+        explosion.particles.material.dispose();
+      }
+      gameState.explosions.splice(i, 1);
+    }
+  }
+
   // Smooth world offset follow - move world down as player goes up
   gameState.world.targetOffset = -gameState.player.position.y;
   gameState.world.offset +=
@@ -391,6 +817,11 @@ function updateGame() {
   // Update all platform positions based on world offset
   gameState.platforms.forEach((platform) => {
     platform.mesh.position.y = platform.position.y + gameState.world.offset;
+  });
+
+  // Update explosion particles positions with world offset
+  gameState.explosions.forEach((explosion) => {
+    explosion.particles.position.y = gameState.world.offset;
   });
 
   // Update copilot model position with world offset
@@ -427,6 +858,8 @@ function updateGame() {
     gameState.player.position.y = 0;
     gameState.player.velocity.x = 0;
     gameState.player.velocity.y = 0;
+    gameState.player.spinning = false;
+    gameState.player.spinProgress = 0;
     gameState.score = 0;
     gameState.world.offset = 0;
     gameState.world.targetOffset = 0;
@@ -437,6 +870,16 @@ function updateGame() {
     gameState.nextPlatformY = 2;
     createPlatform(0, -2);
     generatePlatforms();
+
+    // Clear explosions
+    gameState.explosions.forEach((explosion) => {
+      scene.remove(explosion.particles);
+      explosion.particles.geometry.dispose();
+      if (explosion.particles.material instanceof THREE.Material) {
+        explosion.particles.material.dispose();
+      }
+    });
+    gameState.explosions = [];
 
     // Reset particle positions around the reset world position
     const positions = particles.geometry.attributes.position
@@ -612,6 +1055,12 @@ function animate() {
   // Update game logic
   updateGame();
 
+  // Update CRT shader time uniform for animated effects
+  crtPass.uniforms.time.value = Date.now() * 0.001;
+  
+  // Update glitch shader time uniform
+  glitchPass.uniforms.time.value = Date.now() * 0.001;
+
   // Render with post-processing instead of direct renderer
   composer.render();
 }
@@ -629,4 +1078,9 @@ window.addEventListener("resize", () => {
     window.innerWidth,
     window.innerHeight
   );
+  glitchPass.uniforms.resolution.value.set(
+    window.innerWidth,
+    window.innerHeight
+  );
+  crtPass.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
 });
