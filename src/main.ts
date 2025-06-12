@@ -818,30 +818,26 @@ function getDifficultyMovementChance(): number {
 
   // Much more gradual progression with lower starting values
   const score = gameState.score;
-  
+
   if (score <= 10) {
     // Score 5-10: 12% to 20% (roughly 1 in 8 to 1 in 5)
     const t = (score - 5) / (10 - 5);
-    return 0.12 + t * (0.20 - 0.12);
-  }
-  else if (score <= 25) {
+    return 0.12 + t * (0.2 - 0.12);
+  } else if (score <= 25) {
     // Score 10-25: 20% to 35% (roughly 1 in 5 to 1 in 3)
     const t = (score - 10) / (25 - 10);
-    return 0.20 + t * (0.35 - 0.20);
-  }
-  else if (score <= 50) {
+    return 0.2 + t * (0.35 - 0.2);
+  } else if (score <= 50) {
     // Score 25-50: 35% to 55% (roughly 1 in 3 to 1 in 2)
     const t = (score - 25) / (50 - 25);
     return 0.35 + t * (0.55 - 0.35);
-  }
-  else if (score <= 75) {
-    // Score 50-75: 55% to 70% 
+  } else if (score <= 75) {
+    // Score 50-75: 55% to 70%
     const t = (score - 50) / (75 - 50);
-    return 0.55 + t * (0.70 - 0.55);
-  }
-  else {
+    return 0.55 + t * (0.7 - 0.55);
+  } else {
     // Score 75+: cap at 80% (still leave some non-moving platforms)
-    return 0.80;
+    return 0.8;
   }
 }
 
@@ -851,36 +847,49 @@ function getDifficultyMovementSpeed(): number {
 
   // Much slower progression starting very slow
   const score = gameState.score;
-  
+
   if (score <= 15) {
     // Score 5-15: very slow movement (0.003 to 0.008)
     const t = (score - 5) / (15 - 5);
     return 0.003 + t * (0.008 - 0.003);
-  }
-  else if (score <= 35) {
+  } else if (score <= 35) {
     // Score 15-35: slow to medium (0.008 to 0.015)
     const t = (score - 15) / (35 - 15);
     return 0.008 + t * (0.015 - 0.008);
-  }
-  else if (score <= 60) {
+  } else if (score <= 60) {
     // Score 35-60: medium to fast (0.015 to 0.025)
     const t = (score - 35) / (60 - 35);
     return 0.015 + t * (0.025 - 0.015);
-  }
-  else {
+  } else {
     // Score 60+: cap at moderate speed (not too crazy)
     return 0.025;
   }
 }
 
 function getDifficultyPlatformSpacing(): number {
-  // Gradually increase platform spacing to make jumps harder
+  // More gradual spacing increase with lower maximum
   // At score 0: 3.5 spacing (easy)
-  // At score 10: 3.8 spacing
-  // At score 25: 4.2 spacing
-  // At score 40+: 4.6 spacing (cap - challenging but not impossible)
-  const baseSpacing = Math.min(4.6, 3.5 + (gameState.score / 40) * 1.1);
-  return baseSpacing;
+  // At score 15: 3.8 spacing
+  // At score 30: 4.0 spacing
+  // At score 50+: 4.2 spacing (cap - more reasonable)
+  const score = gameState.score;
+
+  if (score <= 15) {
+    // Score 0-15: 3.5 to 3.8
+    const t = score / 15;
+    return 3.5 + t * (3.8 - 3.5);
+  } else if (score <= 30) {
+    // Score 15-30: 3.8 to 4.0
+    const t = (score - 15) / (30 - 15);
+    return 3.8 + t * (4.0 - 3.8);
+  } else if (score <= 50) {
+    // Score 30-50: 4.0 to 4.2
+    const t = (score - 30) / (50 - 30);
+    return 4.0 + t * (4.2 - 4.0);
+  } else {
+    // Score 50+: cap at 4.2 (reduced from 4.6)
+    return 4.2;
+  }
 }
 
 function getDifficultyMovementRange(): number {
@@ -1018,8 +1027,24 @@ function createPlatform(x: number, y: number) {
 
   // Get current difficulty-based properties
   const movementSpeed = getDifficultyMovementSpeed();
-  const movementRange = getDifficultyMovementRange();
+  let movementRange = getDifficultyMovementRange();
   const platformWidth = getDifficultyPlatformWidth();
+
+  // Calculate viewport bounds to ensure movement range doesn't exceed visible area
+  const viewportHalfWidth =
+    camera.aspect *
+    Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) *
+    camera.position.z;
+
+  const platformHalfWidth = platformWidth / 2;
+  const maxAllowedRange = Math.min(
+    movementRange,
+    Math.abs(x - (-viewportHalfWidth + platformHalfWidth)), // Distance to left edge
+    Math.abs(x - (viewportHalfWidth - platformHalfWidth)) // Distance to right edge
+  );
+
+  // Ensure we have at least some movement range, but not more than viewport allows
+  movementRange = Math.max(0.5, maxAllowedRange);
 
   // Use global counter for consistent indexing across all platforms ever created
   const platformIndex = globalPlatformCounter++;
@@ -1038,7 +1063,7 @@ function createPlatform(x: number, y: number) {
     platformIndex: platformIndex, // Store platform creation index for consistent behavior
     movement: {
       enabled: false, // Will be determined dynamically
-      direction: (platformIndex % 2 === 0) ? 1 : -1, // Alternate directions based on index
+      direction: platformIndex % 2 === 0 ? 1 : -1, // Alternate directions based on index
       speed: movementSpeed,
       range: movementRange,
       centerX: x, // Store original center position
@@ -1064,7 +1089,8 @@ createPlatform(0, -2);
 // Generate platforms dynamically as needed
 function generatePlatforms() {
   // Only generate a few platforms ahead, not 50 at once
-  while (gameState.platforms.length < 15) { // Reduced from 50 to 15
+  while (gameState.platforms.length < 15) {
+    // Reduced from 50 to 15
     // Calculate viewport bounds for platform placement
     const viewportHalfWidth =
       camera.aspect *
@@ -1589,13 +1615,13 @@ function updateGame() {
     // NEW MOVEMENT LOGIC: Better distribution pattern
     if (gameState.score >= 5) {
       const movementChance = getDifficultyMovementChance();
-      
+
       // Use a hash-like function to create better distribution
       // This will spread moving platforms more evenly instead of clustering them
       const hash = (platform.platformIndex * 2654435761) % 1000; // Large prime for good distribution
-      const shouldMove = hash < (movementChance * 1000);
+      const shouldMove = hash < movementChance * 1000;
       platform.movement.enabled = shouldMove;
-      
+
       // Update movement speed based on current difficulty
       platform.movement.speed = getDifficultyMovementSpeed();
     } else {
@@ -1604,21 +1630,50 @@ function updateGame() {
 
     // Handle platform movement (side to side)
     if (platform.movement.enabled) {
+      // Calculate viewport bounds to keep platforms visible
+      const viewportHalfWidth =
+        camera.aspect *
+        Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) *
+        camera.position.z;
+
+      // Calculate platform half-width for bounds checking
+      const platformHalfWidth = platform.size.width / 2;
+      const maxX = viewportHalfWidth - platformHalfWidth;
+      const minX = -viewportHalfWidth + platformHalfWidth;
+
       // Update platform position based on movement
       platform.position.x +=
         platform.movement.direction * platform.movement.speed;
 
-      // Check if platform has reached its movement range
-      const distanceFromCenter = Math.abs(
-        platform.position.x - platform.movement.centerX
-      );
-      if (distanceFromCenter >= platform.movement.range) {
-        // Reverse direction
-        platform.movement.direction *= -1;
-        // Clamp position to exact range to prevent drift
-        platform.position.x =
-          platform.movement.centerX +
-          platform.movement.direction * -1 * platform.movement.range;
+      // Check viewport bounds first - this takes priority over movement range
+      if (platform.position.x > maxX) {
+        platform.position.x = maxX;
+        platform.movement.direction = -1; // Reverse direction
+      } else if (platform.position.x < minX) {
+        platform.position.x = minX;
+        platform.movement.direction = 1; // Reverse direction
+      } else {
+        // Only check movement range if we're within viewport bounds
+        const distanceFromCenter = Math.abs(
+          platform.position.x - platform.movement.centerX
+        );
+        if (distanceFromCenter >= platform.movement.range) {
+          // Reverse direction
+          platform.movement.direction *= -1;
+          // Clamp position to exact range to prevent drift
+          platform.position.x =
+            platform.movement.centerX +
+            platform.movement.direction * -1 * platform.movement.range;
+
+          // Double-check that the clamped position is still within viewport bounds
+          if (platform.position.x > maxX) {
+            platform.position.x = maxX;
+            platform.movement.direction = -1;
+          } else if (platform.position.x < minX) {
+            platform.position.x = minX;
+            platform.movement.direction = 1;
+          }
+        }
       }
 
       // Update mesh position
@@ -1659,19 +1714,36 @@ function updateGame() {
   scoreElement.textContent = `SCORE ${gameState.score}`;
 
   // Debug: Count moving platforms periodically
-  if (gameState.score > 0 && gameState.score % 5 === 0 && Math.random() < 0.02) {
-    const movingCount = gameState.platforms.filter(p => p.movement.enabled).length;
+  if (
+    gameState.score > 0 &&
+    gameState.score % 5 === 0 &&
+    Math.random() < 0.02
+  ) {
+    const movingCount = gameState.platforms.filter(
+      (p) => p.movement.enabled
+    ).length;
     const totalCount = gameState.platforms.length;
     const expectedChance = getDifficultyMovementChance();
-    
+
     // Let's also check platform index distribution
-    const platformIndices = gameState.platforms.map(p => p.platformIndex);
+    const platformIndices = gameState.platforms.map((p) => p.platformIndex);
     const minIndex = Math.min(...platformIndices);
     const maxIndex = Math.max(...platformIndices);
-    
-    console.log(`Score: ${gameState.score}, Moving: ${movingCount}/${totalCount} (${(movingCount/totalCount*100).toFixed(1)}%), Expected: ${(expectedChance*100).toFixed(1)}%`);
-    console.log(`Platform indices range: ${minIndex} to ${maxIndex}, Global counter: ${globalPlatformCounter}`);
-    console.log(`Movement threshold: platforms 0-${Math.floor(expectedChance * 100 - 1)} should move out of every 100`);
+
+    console.log(
+      `Score: ${gameState.score}, Moving: ${movingCount}/${totalCount} (${(
+        (movingCount / totalCount) *
+        100
+      ).toFixed(1)}%), Expected: ${(expectedChance * 100).toFixed(1)}%`
+    );
+    console.log(
+      `Platform indices range: ${minIndex} to ${maxIndex}, Global counter: ${globalPlatformCounter}`
+    );
+    console.log(
+      `Movement threshold: platforms 0-${Math.floor(
+        expectedChance * 100 - 1
+      )} should move out of every 100`
+    );
   }
 
   // Update high score display
