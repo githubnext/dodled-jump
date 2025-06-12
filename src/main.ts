@@ -1862,8 +1862,8 @@ loader.load(
 // Add UI for score display
 const scoreElement = document.createElement("div");
 scoreElement.style.position = "fixed";
-scoreElement.style.top = "20px";
-scoreElement.style.right = "20px"; // Changed from left to right
+scoreElement.style.top = "50px";
+scoreElement.style.right = "70px"; // Changed from left to right
 scoreElement.style.color = "#c4ff00";
 scoreElement.style.fontSize = "40px";
 scoreElement.style.fontFamily = "'DepartureMono', 'Courier New', monospace";
@@ -1876,8 +1876,8 @@ document.body.appendChild(scoreElement);
 // Add UI for high score display
 const highScoreElement = document.createElement("div");
 highScoreElement.style.position = "fixed";
-highScoreElement.style.top = "20px";
-highScoreElement.style.left = "20px";
+highScoreElement.style.top = "50px";
+highScoreElement.style.left = "70px";
 highScoreElement.style.color = "#c4ff00";
 highScoreElement.style.fontSize = "40px";
 highScoreElement.style.fontFamily = "'DepartureMono', 'Courier New', monospace";
