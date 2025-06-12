@@ -1321,9 +1321,113 @@ function handleKeyUp(event: KeyboardEvent) {
 window.addEventListener("keydown", handleKeyDown);
 window.addEventListener("keyup", handleKeyUp);
 
+// Mouse tracking for cursor following when game isn't active
+const mouse = new THREE.Vector2();
+let mouseWorldPosition = new THREE.Vector3();
+
+// Update mouse position and convert to world coordinates
+function updateMousePosition(event: MouseEvent) {
+  // Normalize mouse coordinates to [-1, 1] range
+  mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+  // Convert to world position using the camera
+  const vector = new THREE.Vector3(mouse.x, mouse.y, 0.5);
+  vector.unproject(camera);
+
+  // Calculate world position at the copilot's Z plane (z = 0)
+  const direction = vector.sub(camera.position).normalize();
+  const distance = -camera.position.z / direction.z;
+  mouseWorldPosition = camera.position
+    .clone()
+    .add(direction.multiplyScalar(distance));
+}
+
+// Add mouse move event listener
+window.addEventListener("mousemove", updateMousePosition);
+
 // Update game logic including score display
 function updateGame() {
   if (!copilotModel) return;
+
+  // Animate particles for depth and motion - ALWAYS animate stars regardless of game state
+  particleTime += 0.016; // roughly 60fps
+  const positions = particles.geometry.attributes.position
+    .array as Float32Array;
+
+  // Fixed camera position (camera doesn't move)
+  const cameraCurrentX = 0; // Camera stays at origin
+  const cameraY = 0; // Camera stays at origin
+
+  // Dynamically calculate particle spread based on camera's current FOV and aspect
+  const distanceToParticlePlane = 10;
+  const halfVisibleHeight =
+    Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) *
+    distanceToParticlePlane;
+  const halfVisibleWidth = halfVisibleHeight * camera.aspect;
+
+  const particleSpreadX = halfVisibleWidth * 1.5; // Increased horizontal spread
+  const particleSpreadY = halfVisibleHeight * 2; // Increased vertical spread
+  const particleSpreadZ = 10;
+
+  // Calculate downward particle movement based on player's upward velocity
+  const baseDownwardSpeed = 0; // Base speed particles move down
+  const velocityMultiplier = gameState.gameStarted
+    ? Math.max(0, gameState.player.velocity.y)
+    : 0; // Only use velocity when game is active
+  const totalDownwardSpeed = baseDownwardSpeed + velocityMultiplier;
+
+  for (let i = 0; i < particleCount; i++) {
+    const i3 = i * 3;
+    let pX = positions[i3];
+    let pY = positions[i3 + 1];
+    let pZ = positions[i3 + 2];
+
+    // More varied floating motion with prime number multipliers to avoid synchronization
+    const phaseX = particleTime * 0.7 + i * 2.31; // Prime-based offset
+    const phaseY = particleTime * 0.5 + i * 1.73; // Different prime-based offset
+    const phaseZ = particleTime * 0.9 + i * 3.17; // Another prime-based offset
+
+    // Different speeds and amplitudes for each particle based on index
+    const speedX = 0.001 + (i % 7) * 0.0003; // Varying X drift speed
+    const speedY = 0.0005 + (i % 5) * 0.0002; // Varying Y float speed
+    const speedZ = 0.0008 + (i % 11) * 0.0001; // Varying Z sway speed
+
+    pX += Math.sin(phaseX) * speedX;
+    pY += Math.cos(phaseY) * speedY;
+    pZ += Math.sin(phaseZ) * speedZ;
+
+    // Move particles downward to create illusion of upward motion
+    pY -= totalDownwardSpeed;
+
+    // Respawn particles that fall below the visible area at the TOP with more randomness
+    if (pY < cameraY - particleSpreadY) {
+      // More varied respawn pattern to prevent clustering
+      pY = cameraY + particleSpreadY + Math.random() * 10; // Larger random spawn range
+      pX = cameraCurrentX + (Math.random() - 0.5) * particleSpreadX * 2.2; // Wider respawn area
+      pZ = (Math.random() - 0.5) * particleSpreadZ * 2; // Wider Z respawn
+    }
+
+    // Handle horizontal wrapping (like the player) with some randomness
+    if (pX > cameraCurrentX + particleSpreadX) {
+      pX = cameraCurrentX - particleSpreadX + Math.random() * 2; // Add small random offset
+    } else if (pX < cameraCurrentX - particleSpreadX) {
+      pX = cameraCurrentX + particleSpreadX - Math.random() * 2; // Add small random offset
+    }
+
+    // Handle Z-axis bounds with randomness
+    if (pZ < -particleSpreadZ) {
+      pZ = particleSpreadZ - Math.random() * 2;
+    } else if (pZ > particleSpreadZ) {
+      pZ = -particleSpreadZ + Math.random() * 2;
+    }
+
+    positions[i3] = pX;
+    positions[i3 + 1] = pY;
+    positions[i3 + 2] = pZ;
+  }
+
+  particles.geometry.attributes.position.needsUpdate = true;
 
   // Handle camera animation
   if (cameraState.animating) {
@@ -1435,10 +1539,51 @@ function updateGame() {
 
   // Only run game logic if the game has started
   if (!gameState.gameStarted) {
-    // Keep model centered when game hasn't started
+    // Keep model centered when game hasn't started, but make it look at cursor
     if (copilotModel) {
       copilotModel.position.set(0, 0, 0);
-      copilotModel.rotation.set(0, 0, 0);
+
+      // Make the copilot head look at the cursor position with distance-based intensity
+      const headPosition = copilotModel.position.clone();
+      const direction = mouseWorldPosition.clone().sub(headPosition);
+      const distance = direction.length();
+
+      // Calculate base rotation angles to look at the mouse
+      const baseRotationY = Math.atan2(direction.x, direction.z);
+      const baseRotationX = -Math.atan2(
+        direction.y,
+        Math.sqrt(direction.x * direction.x + direction.z * direction.z)
+      );
+
+      // Create distance-based intensity that starts very subtle and grows gradually
+      const minDistance = 0.5; // Start applying effect from this distance
+      const maxDistance = 4.0; // Full effect at this distance
+      const normalizedDistance = Math.max(
+        0,
+        Math.min(1, (distance - minDistance) / (maxDistance - minDistance))
+      );
+
+      // Use a smooth curve for more natural scaling (ease-out)
+      const intensityMultiplier =
+        normalizedDistance * normalizedDistance * (3 - 2 * normalizedDistance);
+
+      // Apply intensity multiplier to rotations
+      const targetRotationY = baseRotationY * intensityMultiplier;
+      const targetRotationX = baseRotationX * intensityMultiplier;
+
+      // Limit rotation angles for more natural head movement
+      const clampedRotationY = Math.max(-0.8, Math.min(0.8, targetRotationY));
+      const clampedRotationX = Math.max(-0.3, Math.min(0.3, targetRotationX));
+
+      // Smoothly interpolate to the target rotation for natural movement
+      const lerpSpeed = 0.08;
+      copilotModel.rotation.y +=
+        (clampedRotationY - copilotModel.rotation.y) * lerpSpeed;
+      copilotModel.rotation.x +=
+        (clampedRotationX - copilotModel.rotation.x) * lerpSpeed;
+
+      // Keep Z rotation at 0 for upright head position
+      copilotModel.rotation.z = 0;
     }
     return;
   }
@@ -1534,78 +1679,6 @@ function updateGame() {
     const bobbingOffset = Math.sin(Date.now() * 0.005) * 0.05;
     copilotModel.rotation.z = gameState.player.velocity.y * 0.5 + bobbingOffset;
   }
-
-  // Animate particles for depth and motion
-  particleTime += 0.016; // roughly 60fps
-  const positions = particles.geometry.attributes.position
-    .array as Float32Array;
-
-  // Fixed camera position (camera doesn't move)
-  const cameraCurrentX = 0; // Camera stays at origin
-  const cameraY = 0; // Camera stays at origin
-
-  // Dynamically calculate particle spread based on camera's current FOV and aspect
-  const distanceToParticlePlane = 10;
-  const halfVisibleHeight =
-    Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) *
-    distanceToParticlePlane;
-  const halfVisibleWidth = halfVisibleHeight * camera.aspect;
-
-  const particleSpreadX = halfVisibleWidth * 1.5; // Increased horizontal spread
-  const particleSpreadY = halfVisibleHeight * 2; // Increased vertical spread
-  const particleSpreadZ = 10;
-
-  // Calculate downward particle movement based on player's upward velocity
-  const baseDownwardSpeed = 0; // Base speed particles move down
-  const velocityMultiplier = Math.max(0, gameState.player.velocity.y); // Extra speed based on upward velocity
-  const totalDownwardSpeed = baseDownwardSpeed + velocityMultiplier;
-
-  for (let i = 0; i < particleCount; i++) {
-    const i3 = i * 3;
-    let pX = positions[i3];
-    let pY = positions[i3 + 1];
-    let pZ = positions[i3 + 2];
-
-    // Gentle floating motion with unique phases per particle
-    const phaseX = particleTime + i * 0.1;
-    const phaseY = particleTime + i * 0.05;
-    const phaseZ = particleTime + i * 0.08;
-
-    pX += Math.sin(phaseX) * 0.002; // x drift
-    pY += Math.cos(phaseY) * 0.001; // y float
-    pZ += Math.sin(phaseZ) * 0.0015; // z sway
-
-    // Move particles downward to create illusion of upward motion
-    pY -= totalDownwardSpeed;
-
-    // Respawn particles that fall below the visible area at the TOP
-    if (pY < cameraY - particleSpreadY) {
-      // Respawn at top with random X and Z positions
-      pY = cameraY + particleSpreadY + Math.random() * 5; // Spawn above visible area
-      pX = cameraCurrentX + (Math.random() - 0.5) * particleSpreadX * 2;
-      pZ = (Math.random() - 0.5) * particleSpreadZ * 2;
-    }
-
-    // Handle horizontal wrapping (like the player)
-    if (pX > cameraCurrentX + particleSpreadX) {
-      pX = cameraCurrentX - particleSpreadX;
-    } else if (pX < cameraCurrentX - particleSpreadX) {
-      pX = cameraCurrentX + particleSpreadX;
-    }
-
-    // Handle Z-axis bounds
-    if (pZ < -particleSpreadZ) {
-      pZ = particleSpreadZ;
-    } else if (pZ > particleSpreadZ) {
-      pZ = -particleSpreadZ;
-    }
-
-    positions[i3] = pX;
-    positions[i3 + 1] = pY;
-    positions[i3 + 2] = pZ;
-  }
-
-  particles.geometry.attributes.position.needsUpdate = true;
 
   // Update glitch effect
   if (gameState.glitch.active) {
@@ -1886,14 +1959,23 @@ function updateGame() {
     });
     gameState.explosions = [];
 
-    // Reset particle positions around the reset world position
+    // Reset particle positions around the reset world position with better distribution
     const positions = particles.geometry.attributes.position
       .array as Float32Array;
     for (let i = 0; i < particleCount; i++) {
       const i3 = i * 3;
-      positions[i3] = (Math.random() - 0.5) * 40; // x - wider spread
-      positions[i3 + 1] = (Math.random() - 0.5) * 80 - 40; // y around starting position
-      positions[i3 + 2] = (Math.random() - 0.5) * 15; // z - consistent with recycling range
+
+      // Use the same stratified sampling approach as initial setup for consistent distribution
+      const gridSize = Math.ceil(Math.sqrt(particleCount));
+      const gridX = i % gridSize;
+      const gridY = Math.floor(i / gridSize);
+
+      const cellWidth = 80 / gridSize;
+      const cellHeight = 160 / gridSize;
+
+      positions[i3] = gridX * cellWidth + Math.random() * cellWidth - 40; // x - even distribution
+      positions[i3 + 1] = gridY * cellHeight + Math.random() * cellHeight - 80; // y - even distribution
+      positions[i3 + 2] = (Math.random() - 0.5) * 30; // z - wider depth spread
     }
     particles.geometry.attributes.position.needsUpdate = true;
   }
@@ -1917,10 +1999,21 @@ const particleColorsArray = new Float32Array(particleCount * 3); // White star c
 for (let i = 0; i < particleCount; i++) {
   const i3 = i * 3;
 
-  // Random positions spread around the scene, initially around camera
-  particlePositions[i3] = (Math.random() - 0.5) * 40; // x - even wider spread
-  particlePositions[i3 + 1] = Math.random() * 80 - 40; // y - larger vertical spread around starting position
-  particlePositions[i3 + 2] = (Math.random() - 0.5) * 15; // z - consistent with recycling range
+  // More even distribution using stratified sampling for better coverage
+  // Divide space into a grid and place particles randomly within each cell
+  const gridSize = Math.ceil(Math.sqrt(particleCount));
+  const gridX = i % gridSize;
+  const gridY = Math.floor(i / gridSize);
+
+  // Calculate cell size for even coverage
+  const cellWidth = 80 / gridSize; // Total width 80 divided by grid
+  const cellHeight = 160 / gridSize; // Total height 160 divided by grid
+
+  // Random position within the assigned cell, then offset to center around camera
+  particlePositions[i3] = gridX * cellWidth + Math.random() * cellWidth - 40; // x - centered around 0
+  particlePositions[i3 + 1] =
+    gridY * cellHeight + Math.random() * cellHeight - 80; // y - centered around 0
+  particlePositions[i3 + 2] = (Math.random() - 0.5) * 30; // z - wider depth spread
 
   // Set all particles to white with slight brightness variation for star-like effect
   const brightness = 0.8 + Math.random() * 0.2; // Random brightness between 0.8 and 1.0
@@ -2085,7 +2178,6 @@ loader.load(
 
 // Remove old mouse interaction code since we're now a jumping game
 // const raycaster = new THREE.Raycaster();
-// const mouse = new THREE.Vector2();
 
 // Add UI for score display
 const scoreElement = document.createElement("div");
