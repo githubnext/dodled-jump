@@ -2254,7 +2254,7 @@ dracoLoader.setDecoderPath(
 loader.setDRACOLoader(dracoLoader);
 
 loader.load(
-  "/copilot.glb",
+  new URL("/copilot.glb", import.meta.url).href,
   (gltf) => {
     copilotModel = gltf.scene;
 
