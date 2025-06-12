@@ -432,6 +432,7 @@ let isAudioInitialized = false;
 let backgroundMusic: AudioBufferSourceNode | null = null;
 let musicBuffer: AudioBuffer | null = null;
 let musicGainNode: GainNode | null = null;
+let isMuted = false; // Track mute state
 
 // Load and decode the background music
 async function loadBackgroundMusic() {
@@ -452,9 +453,12 @@ function startBackgroundMusic() {
   if (!audioContext || !musicBuffer || backgroundMusic) return;
 
   try {
-    // Create gain node for volume control
+    // Create gain node for volume control (recreate each time)
     musicGainNode = audioContext.createGain();
-    musicGainNode.gain.setValueAtTime(0.3, audioContext.currentTime); // Set volume to 30%
+    musicGainNode.gain.setValueAtTime(
+      isMuted ? 0 : 0.3,
+      audioContext.currentTime
+    ); // Set volume to 30% or 0 if muted
     musicGainNode.connect(audioContext.destination);
 
     // Create and configure the audio source
@@ -466,8 +470,11 @@ function startBackgroundMusic() {
     // Handle when the music ends (shouldn't happen with loop, but just in case)
     backgroundMusic.onended = () => {
       backgroundMusic = null;
-      // Restart the music after a brief delay
-      setTimeout(startBackgroundMusic, 100);
+      musicGainNode = null;
+      // Restart the music after a brief delay if game is still running
+      if (gameState.gameStarted || gameState.introAnimation.active) {
+        setTimeout(startBackgroundMusic, 100);
+      }
     };
 
     // Start playing
@@ -476,13 +483,6 @@ function startBackgroundMusic() {
   } catch (error) {
     console.error("Error starting background music:", error);
   }
-}
-
-// Restart background music (for game resets)
-function restartBackgroundMusic() {
-  stopBackgroundMusic();
-  // Small delay to ensure cleanup, then restart
-  setTimeout(startBackgroundMusic, 100);
 }
 
 // Stop background music
@@ -496,6 +496,36 @@ function stopBackgroundMusic() {
       console.error("Error stopping background music:", error);
     }
   }
+
+  // Also disconnect and cleanup the gain node
+  if (musicGainNode) {
+    try {
+      musicGainNode.disconnect();
+      musicGainNode = null;
+    } catch (error) {
+      console.error("Error disconnecting music gain node:", error);
+    }
+  }
+
+  console.log("Background music stopped");
+}
+
+// Toggle mute state
+function toggleMute() {
+  isMuted = !isMuted;
+
+  if (musicGainNode) {
+    if (isMuted) {
+      musicGainNode.gain.setValueAtTime(0, audioContext!.currentTime);
+    } else {
+      musicGainNode.gain.setValueAtTime(0.3, audioContext!.currentTime);
+    }
+  }
+
+  // Update mute button text
+  if (muteButtonElement) {
+    muteButtonElement.textContent = isMuted ? "SOUND OFF" : "SOUND ON";
+  }
 }
 
 // Initialize audio context (must be done after user interaction)
@@ -507,9 +537,8 @@ async function initializeAudio() {
       isAudioInitialized = true;
       console.log("Audio context initialized");
 
-      // Load and start background music
+      // Load music immediately but don't start playing
       await loadBackgroundMusic();
-      startBackgroundMusic();
     } catch (error) {
       console.warn("Web Audio API not supported:", error);
     }
@@ -518,7 +547,7 @@ async function initializeAudio() {
 
 // Create jump sound effect with variance
 function createJumpSound() {
-  if (!audioContext || !isAudioInitialized) return;
+  if (!audioContext || !isAudioInitialized || isMuted) return;
 
   try {
     // Create oscillator for the main tone
@@ -577,7 +606,7 @@ function createJumpSound() {
 
 // Create a falling/game over sound effect
 function createFallSound() {
-  if (!audioContext || !isAudioInitialized) return;
+  if (!audioContext || !isAudioInitialized || isMuted) return;
 
   try {
     // Create oscillator for falling sound - descending pitch
@@ -629,7 +658,7 @@ function createFallSound() {
 
 // Create a higher pitched sound for successful landings/combos with variance
 function createLandingSound(pitch: number = 1) {
-  if (!audioContext || !isAudioInitialized) return;
+  if (!audioContext || !isAudioInitialized || isMuted) return;
 
   try {
     // Create two oscillators for a richer sound
@@ -1216,6 +1245,16 @@ function startGame() {
     initializeAudio();
   }
 
+  // Start music when game begins
+  if (audioContext && audioContext.state === "suspended") {
+    audioContext.resume().then(() => {
+      console.log("Audio context resumed");
+      startBackgroundMusic();
+    });
+  } else if (audioContext && musicBuffer) {
+    startBackgroundMusic();
+  }
+
   // Play a special sound for the intro animation
   createJumpSound(); // This will create a nice sound effect for the start
 }
@@ -1800,8 +1839,8 @@ function updateGame() {
     // Play fall sound effect
     createFallSound();
 
-    // Restart background music for fresh start
-    restartBackgroundMusic();
+    // Stop background music when game ends
+    stopBackgroundMusic();
 
     // Reset game state
     gameState.gameStarted = false;
@@ -2076,6 +2115,23 @@ highScoreElement.style.textShadow =
 highScoreElement.textContent = `BEST ${gameState.highScore}`;
 document.body.appendChild(highScoreElement);
 
+// Add UI for mute button
+const muteButtonElement = document.createElement("div");
+muteButtonElement.style.position = "fixed";
+muteButtonElement.style.bottom = "50px";
+muteButtonElement.style.left = "70px";
+muteButtonElement.style.color = "#c4ff00";
+muteButtonElement.style.fontSize = "40px";
+muteButtonElement.style.fontFamily =
+  "'DepartureMono', 'Courier New', monospace";
+muteButtonElement.style.zIndex = "1000";
+muteButtonElement.style.cursor = "pointer";
+muteButtonElement.style.textShadow =
+  "0 0 10px #c4ff00, 0 0 20px #c4ff00, 0 0 40px #c4ff00, 0 0 80px #c4ff00";
+muteButtonElement.textContent = isMuted ? "SOUND OFF" : "SOUND ON";
+muteButtonElement.addEventListener("click", toggleMute);
+document.body.appendChild(muteButtonElement);
+
 // Add UI for start game prompt
 const startPromptElement = document.createElement("div");
 startPromptElement.style.position = "fixed";
@@ -2093,9 +2149,8 @@ startPromptElement.style.textShadow =
 startPromptElement.innerHTML = "PRESS SPACE TO START";
 document.body.appendChild(startPromptElement);
 
-// Add click listener to initialize audio context on first user interaction
-document.addEventListener("click", initializeAudio, { once: true });
-document.addEventListener("keydown", initializeAudio, { once: true });
+// Initialize audio immediately on page load
+initializeAudio();
 
 // Animation loop
 function animate() {
