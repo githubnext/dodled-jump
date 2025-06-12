@@ -1255,7 +1255,7 @@ function checkPlatformCollision() {
         if (!cube.isHit) {
           cube.isHit = true;
           cube.mesh.material = createGreenCubeMaterial();
-          
+
           // Increment score for each new cube hit
           gameState.score++;
           // Check for new high score
@@ -1610,7 +1610,7 @@ function updateGame() {
             if (!cube.isHit) {
               cube.isHit = true;
               cube.mesh.material = createGreenCubeMaterial();
-              
+
               // Increment score for each new cube hit
               gameState.score++;
               // Check for new high score
