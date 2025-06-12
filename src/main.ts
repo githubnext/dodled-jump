@@ -715,6 +715,7 @@ function createLandingSound(pitch: number = 1) {
 const gameState = {
   baseGravity: -0.006, // Base gravity for more floaty feel
   jumpVelocity: 0.25, // Slightly lower jump velocity for more natural arc
+  doubleJumpVelocity: 0.22, // Slightly less powerful than initial jump
   moveSpeed: 0.15,
   gameStarted: false, // Track if the game has started
   introAnimation: {
@@ -735,6 +736,8 @@ const gameState = {
     spinAxis: new THREE.Vector3(),
     spinProgress: 0,
     spinSpeed: 0.015, // Speed of the spin animation - much slower for a controlled trick effect
+    doubleJumpAvailable: false, // Track if double jump is available
+    hasDoubleJumped: false, // Track if already used double jump in current air time
   },
   world: {
     offset: 0, // How much the world has moved down
@@ -777,6 +780,7 @@ const gameState = {
   keys: {
     left: false,
     right: false,
+    up: false,
   },
 };
 
@@ -1135,6 +1139,10 @@ function checkPlatformCollision() {
       gameState.player.velocity.y = gameState.jumpVelocity;
       gameState.player.onGround = true;
       gameState.player.position.y = platformTop + playerRadius;
+      
+      // Reset double jump availability
+      gameState.player.doubleJumpAvailable = true;
+      gameState.player.hasDoubleJumped = false;
 
       // Calculate pitch based on score for progression feeling - much slower progression
       const pitchMultiplier = 1 + gameState.score * 0.005; // Changed from 0.02 to 0.005 - 4x slower
@@ -1214,16 +1222,17 @@ function startGame() {
 
 // Keyboard controls
 const keys: { [key: string]: boolean } = {};
+const keyPressed: { [key: string]: boolean } = {}; // Track if key was just pressed this frame
 
 function handleKeyDown(event: KeyboardEvent) {
+  // Track key press (only true on first press, not continuous hold)
+  keyPressed[event.code] = !keys[event.code];
   keys[event.code] = true;
 
-  // Handle space key for starting the game
-  if (event.code === "Space") {
-    if (!gameState.gameStarted) {
-      startGame();
-      return;
-    }
+  // Handle space key for starting the game (only when game not started)
+  if (event.code === "Space" && !gameState.gameStarted) {
+    startGame();
+    return;
   }
 
   // Only handle movement keys if game has started
@@ -1238,11 +1247,17 @@ function handleKeyDown(event: KeyboardEvent) {
     case "KeyD":
       gameState.keys.right = true;
       break;
+    case "ArrowUp":
+    case "KeyW":
+    case "Space":
+      gameState.keys.up = true;
+      break;
   }
 }
 
 function handleKeyUp(event: KeyboardEvent) {
   keys[event.code] = false;
+  keyPressed[event.code] = false;
 
   // Only handle movement keys if game has started
   if (!gameState.gameStarted) return;
@@ -1255,6 +1270,11 @@ function handleKeyUp(event: KeyboardEvent) {
     case "ArrowRight":
     case "KeyD":
       gameState.keys.right = false;
+      break;
+    case "ArrowUp":
+    case "KeyW":
+    case "Space":
+      gameState.keys.up = false;
       break;
   }
 }
@@ -1354,6 +1374,10 @@ function updateGame() {
           gameState.player.position.y = platformTop + playerRadius;
           gameState.player.velocity.y = gameState.jumpVelocity;
 
+          // Reset double jump availability
+          gameState.player.doubleJumpAvailable = true;
+          gameState.player.hasDoubleJumped = false;
+
           // Initialize audio on first interaction if needed
           if (!isAudioInitialized) {
             initializeAudio();
@@ -1387,6 +1411,18 @@ function updateGame() {
     gameState.player.velocity.x = gameState.moveSpeed;
   } else {
     gameState.player.velocity.x *= 0.9; // Friction
+  }
+
+  // Handle double jump input (only on key press, not hold)
+  if ((keyPressed["ArrowUp"] || keyPressed["KeyW"] || keyPressed["Space"]) && 
+      gameState.player.doubleJumpAvailable && !gameState.player.hasDoubleJumped) {
+    // Perform double jump
+    gameState.player.velocity.y = gameState.doubleJumpVelocity;
+    gameState.player.hasDoubleJumped = true;
+    gameState.player.doubleJumpAvailable = false;
+
+    // Play jump sound for double jump
+    createJumpSound();
   }
 
   // Apply gravity (with difficulty scaling)
@@ -1775,6 +1811,8 @@ function updateGame() {
     gameState.player.velocity.y = 0;
     gameState.player.spinning = false;
     gameState.player.spinProgress = 0;
+    gameState.player.doubleJumpAvailable = false;
+    gameState.player.hasDoubleJumped = false;
     gameState.score = 0;
     gameState.world.offset = 0;
     gameState.world.targetOffset = 0;
@@ -1817,6 +1855,11 @@ function updateGame() {
     }
     particles.geometry.attributes.position.needsUpdate = true;
   }
+
+  // Reset key pressed states for next frame
+  Object.keys(keyPressed).forEach(key => {
+    keyPressed[key] = false;
+  });
 }
 
 // Generate initial platforms
