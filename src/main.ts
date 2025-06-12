@@ -1587,36 +1587,60 @@ function updateGame() {
         const playerY = gameState.player.position.y;
         const playerRadius = gameState.player.radius;
 
-        const platformLeft = platform.position.x - platform.size.width / 2;
-        const platformRight = platform.position.x + platform.size.width / 2;
-        const platformTop = platform.position.y + platform.size.height / 2;
-        const platformBottom = platform.position.y - platform.size.height / 2;
+        // Check collision with individual cubes (same logic as main game)
+        for (const cube of platform.cubes) {
+          const cubeLeft = cube.position.x - 0.5; // cube is 1x1 unit
+          const cubeRight = cube.position.x + 0.5;
+          const cubeTop = cube.position.y + 0.5;
+          const cubeBottom = cube.position.y - 0.5;
 
-        if (
-          playerX + playerRadius > platformLeft &&
-          playerX - playerRadius < platformRight &&
-          playerY - playerRadius <= platformTop &&
-          playerY - playerRadius >= platformBottom
-        ) {
-          // Hit platform - end intro and start game
-          gameState.introAnimation.active = false;
-          gameState.gameStarted = true;
-          gameState.player.position.y = platformTop + playerRadius;
-          gameState.player.velocity.y = gameState.jumpVelocity;
+          // Check if player is above the cube and within x bounds
+          if (
+            playerX + playerRadius > cubeLeft &&
+            playerX - playerRadius < cubeRight &&
+            playerY - playerRadius <= cubeTop &&
+            playerY - playerRadius >= cubeBottom
+          ) {
+            // Initialize audio on first interaction if needed
+            if (!isAudioInitialized) {
+              initializeAudio();
+            }
 
-          // Reset double jump availability
-          gameState.player.doubleJumpAvailable = true;
-          gameState.player.hasDoubleJumped = false;
+            // Player lands on cube - turn it green if not already hit and count score
+            if (!cube.isHit) {
+              cube.isHit = true;
+              cube.mesh.material = createGreenCubeMaterial();
+              
+              // Increment score for each new cube hit
+              gameState.score++;
+              // Check for new high score
+              updateHighScore(gameState.score);
+            }
 
-          // Initialize audio on first interaction if needed
-          if (!isAudioInitialized) {
-            initializeAudio();
+            // Hit platform - end intro and start game
+            gameState.introAnimation.active = false;
+            gameState.gameStarted = true;
+            gameState.player.position.y = cubeTop + playerRadius;
+            gameState.player.velocity.y = gameState.jumpVelocity;
+
+            // Reset double jump availability
+            gameState.player.doubleJumpAvailable = true;
+            gameState.player.hasDoubleJumped = false;
+
+            // Play landing sound
+            createLandingSound(1);
+
+            // Create explosion at collision point
+            const explosionX = playerX;
+            const explosionY = cubeTop; // Right at the cube surface
+            const explosionColor = 0x00ff00; // Green for all cubes now
+            createExplosion(explosionX, explosionY, explosionColor);
+
+            // Trigger glitch effect on platform hit
+            triggerGlitch();
+
+            return; // Exit after hitting any cube
           }
-
-          // Play landing sound
-          createLandingSound(1);
-
-          break;
         }
       }
     }
