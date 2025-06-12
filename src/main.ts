@@ -138,9 +138,9 @@ camera.position.set(
 );
 
 // Set up the renderer
-const renderer = new THREE.WebGLRenderer({ 
+const renderer = new THREE.WebGLRenderer({
   antialias: true,
-  powerPreference: "high-performance"
+  powerPreference: "high-performance",
 });
 renderer.setSize(window.innerWidth, window.innerHeight);
 // Remove the solid background color - we'll use a gradient background instead
