@@ -420,45 +420,45 @@ let musicGainNode: GainNode | null = null;
 // Load and decode the background music
 async function loadBackgroundMusic() {
   if (!audioContext) return;
-  
+
   try {
-    const response = await fetch('/8-bit-game-loop.wav');
+    const response = await fetch("/8-bit-game-loop.wav");
     const arrayBuffer = await response.arrayBuffer();
     musicBuffer = await audioContext.decodeAudioData(arrayBuffer);
-    console.log('Background music loaded');
+    console.log("Background music loaded");
   } catch (error) {
-    console.error('Error loading background music:', error);
+    console.error("Error loading background music:", error);
   }
 }
 
 // Start playing background music
 function startBackgroundMusic() {
   if (!audioContext || !musicBuffer || backgroundMusic) return;
-  
+
   try {
     // Create gain node for volume control
     musicGainNode = audioContext.createGain();
     musicGainNode.gain.setValueAtTime(0.3, audioContext.currentTime); // Set volume to 30%
     musicGainNode.connect(audioContext.destination);
-    
+
     // Create and configure the audio source
     backgroundMusic = audioContext.createBufferSource();
     backgroundMusic.buffer = musicBuffer;
     backgroundMusic.loop = true; // Enable seamless looping
     backgroundMusic.connect(musicGainNode);
-    
+
     // Handle when the music ends (shouldn't happen with loop, but just in case)
     backgroundMusic.onended = () => {
       backgroundMusic = null;
       // Restart the music after a brief delay
       setTimeout(startBackgroundMusic, 100);
     };
-    
+
     // Start playing
     backgroundMusic.start(0);
-    console.log('Background music started');
+    console.log("Background music started");
   } catch (error) {
-    console.error('Error starting background music:', error);
+    console.error("Error starting background music:", error);
   }
 }
 
@@ -477,7 +477,7 @@ function stopBackgroundMusic() {
       backgroundMusic.disconnect();
       backgroundMusic = null;
     } catch (error) {
-      console.error('Error stopping background music:', error);
+      console.error("Error stopping background music:", error);
     }
   }
 }
@@ -486,10 +486,11 @@ function stopBackgroundMusic() {
 async function initializeAudio() {
   if (!isAudioInitialized) {
     try {
-      audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      audioContext = new (window.AudioContext ||
+        (window as any).webkitAudioContext)();
       isAudioInitialized = true;
       console.log("Audio context initialized");
-      
+
       // Load and start background music
       await loadBackgroundMusic();
       startBackgroundMusic();
@@ -507,39 +508,52 @@ function createJumpSound() {
     // Create oscillator for the main tone
     const oscillator = audioContext.createOscillator();
     const gainNode = audioContext.createGain();
-    
+
     // Connect audio nodes
     oscillator.connect(gainNode);
     gainNode.connect(audioContext.destination);
-    
+
     // Add variance to frequencies - random variation of ±15%
     const baseFreq1 = 200 + (Math.random() - 0.5) * 60; // 170-230Hz
-    const baseFreq2 = 400 + (Math.random() - 0.5) * 120; // 340-460Hz  
+    const baseFreq2 = 400 + (Math.random() - 0.5) * 120; // 340-460Hz
     const baseFreq3 = 300 + (Math.random() - 0.5) * 90; // 255-345Hz
-    
+
     // Set up the jump sound - ascending frequency sweep with variance
     oscillator.frequency.setValueAtTime(baseFreq1, audioContext.currentTime);
-    oscillator.frequency.exponentialRampToValueAtTime(baseFreq2, audioContext.currentTime + 0.1);
-    oscillator.frequency.exponentialRampToValueAtTime(baseFreq3, audioContext.currentTime + 0.2);
-    
+    oscillator.frequency.exponentialRampToValueAtTime(
+      baseFreq2,
+      audioContext.currentTime + 0.1
+    );
+    oscillator.frequency.exponentialRampToValueAtTime(
+      baseFreq3,
+      audioContext.currentTime + 0.2
+    );
+
     // Randomly vary the waveform for more variety
-    const waveforms = ['triangle', 'sine', 'square'];
-    oscillator.type = waveforms[Math.floor(Math.random() * waveforms.length)] as OscillatorType;
-    
+    const waveforms = ["triangle", "sine", "square"];
+    oscillator.type = waveforms[
+      Math.floor(Math.random() * waveforms.length)
+    ] as OscillatorType;
+
     // Add slight timing variance
     const duration = 0.2 + Math.random() * 0.1; // 0.2-0.3 seconds
     const attackTime = 0.015 + Math.random() * 0.01; // 0.015-0.025 seconds
-    
+
     // Volume envelope with variance
     const peakVolume = 0.25 + Math.random() * 0.1; // 0.25-0.35
     gainNode.gain.setValueAtTime(0, audioContext.currentTime);
-    gainNode.gain.linearRampToValueAtTime(peakVolume, audioContext.currentTime + attackTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
-    
+    gainNode.gain.linearRampToValueAtTime(
+      peakVolume,
+      audioContext.currentTime + attackTime
+    );
+    gainNode.gain.exponentialRampToValueAtTime(
+      0.01,
+      audioContext.currentTime + duration
+    );
+
     // Play the sound
     oscillator.start(audioContext.currentTime);
     oscillator.stop(audioContext.currentTime + duration);
-    
   } catch (error) {
     console.warn("Error creating jump sound:", error);
   }
@@ -554,33 +568,44 @@ function createFallSound() {
     const oscillator = audioContext.createOscillator();
     const gainNode = audioContext.createGain();
     const filterNode = audioContext.createBiquadFilter();
-    
+
     // Connect audio nodes
     oscillator.connect(gainNode);
     gainNode.connect(filterNode);
     filterNode.connect(audioContext.destination);
-    
+
     // Set up the falling sound - descending frequency sweep
     oscillator.frequency.setValueAtTime(400, audioContext.currentTime);
-    oscillator.frequency.exponentialRampToValueAtTime(100, audioContext.currentTime + 0.5);
-    
+    oscillator.frequency.exponentialRampToValueAtTime(
+      100,
+      audioContext.currentTime + 0.5
+    );
+
     // Use sawtooth wave for more dramatic effect
-    oscillator.type = 'sawtooth';
-    
+    oscillator.type = "sawtooth";
+
     // Low-pass filter to make it less harsh
-    filterNode.type = 'lowpass';
+    filterNode.type = "lowpass";
     filterNode.frequency.setValueAtTime(1000, audioContext.currentTime);
-    filterNode.frequency.exponentialRampToValueAtTime(200, audioContext.currentTime + 0.5);
-    
+    filterNode.frequency.exponentialRampToValueAtTime(
+      200,
+      audioContext.currentTime + 0.5
+    );
+
     // Volume envelope - quick attack, slow decay
     gainNode.gain.setValueAtTime(0, audioContext.currentTime);
-    gainNode.gain.linearRampToValueAtTime(0.15, audioContext.currentTime + 0.05);
-    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
-    
+    gainNode.gain.linearRampToValueAtTime(
+      0.15,
+      audioContext.currentTime + 0.05
+    );
+    gainNode.gain.exponentialRampToValueAtTime(
+      0.01,
+      audioContext.currentTime + 0.5
+    );
+
     // Play the sound
     oscillator.start(audioContext.currentTime);
     oscillator.stop(audioContext.currentTime + 0.5);
-    
   } catch (error) {
     console.warn("Error creating fall sound:", error);
   }
@@ -596,54 +621,75 @@ function createLandingSound(pitch: number = 1) {
     const osc2 = audioContext.createOscillator();
     const gainNode = audioContext.createGain();
     const filterNode = audioContext.createBiquadFilter();
-    
+
     // Connect audio nodes
     osc1.connect(gainNode);
     osc2.connect(gainNode);
     gainNode.connect(filterNode);
     filterNode.connect(audioContext.destination);
-    
+
     // Add variance to base frequencies - ±10% variation
     const baseFreq = (300 + (Math.random() - 0.5) * 60) * pitch; // 270-330Hz * pitch
     const harmonic = 1.4 + Math.random() * 0.2; // 1.4-1.6 harmonic ratio (was fixed at 1.5)
-    
+
     osc1.frequency.setValueAtTime(baseFreq, audioContext.currentTime);
-    osc2.frequency.setValueAtTime(baseFreq * harmonic, audioContext.currentTime);
-    
+    osc2.frequency.setValueAtTime(
+      baseFreq * harmonic,
+      audioContext.currentTime
+    );
+
     // Add variance to frequency sweep
     const sweep1End = baseFreq * (0.65 + Math.random() * 0.1); // 0.65-0.75
     const sweep2End = baseFreq * (1.15 + Math.random() * 0.1); // 1.15-1.25
-    
+
     // Brief frequency sweep for landing impact with variance
-    osc1.frequency.exponentialRampToValueAtTime(sweep1End, audioContext.currentTime + 0.1);
-    osc2.frequency.exponentialRampToValueAtTime(sweep2End, audioContext.currentTime + 0.1);
-    
+    osc1.frequency.exponentialRampToValueAtTime(
+      sweep1End,
+      audioContext.currentTime + 0.1
+    );
+    osc2.frequency.exponentialRampToValueAtTime(
+      sweep2End,
+      audioContext.currentTime + 0.1
+    );
+
     // Randomly vary waveforms
-    const waveforms1 = ['sawtooth', 'triangle', 'square'];
-    const waveforms2 = ['triangle', 'sine', 'sawtooth'];
-    osc1.type = waveforms1[Math.floor(Math.random() * waveforms1.length)] as OscillatorType;
-    osc2.type = waveforms2[Math.floor(Math.random() * waveforms2.length)] as OscillatorType;
-    
+    const waveforms1 = ["sawtooth", "triangle", "square"];
+    const waveforms2 = ["triangle", "sine", "sawtooth"];
+    osc1.type = waveforms1[
+      Math.floor(Math.random() * waveforms1.length)
+    ] as OscillatorType;
+    osc2.type = waveforms2[
+      Math.floor(Math.random() * waveforms2.length)
+    ] as OscillatorType;
+
     // Low-pass filter with variance
     const filterFreq = 1800 + Math.random() * 400; // 1800-2200Hz
-    filterNode.type = 'lowpass';
+    filterNode.type = "lowpass";
     filterNode.frequency.setValueAtTime(filterFreq, audioContext.currentTime);
-    filterNode.frequency.exponentialRampToValueAtTime(filterFreq * 0.4, audioContext.currentTime + 0.15);
-    
+    filterNode.frequency.exponentialRampToValueAtTime(
+      filterFreq * 0.4,
+      audioContext.currentTime + 0.15
+    );
+
     // Volume envelope with slight variance
     const peakVolume = 0.18 + Math.random() * 0.04; // 0.18-0.22
     const duration = 0.13 + Math.random() * 0.04; // 0.13-0.17 seconds
-    
+
     gainNode.gain.setValueAtTime(0, audioContext.currentTime);
-    gainNode.gain.linearRampToValueAtTime(peakVolume, audioContext.currentTime + 0.01);
-    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
-    
+    gainNode.gain.linearRampToValueAtTime(
+      peakVolume,
+      audioContext.currentTime + 0.01
+    );
+    gainNode.gain.exponentialRampToValueAtTime(
+      0.01,
+      audioContext.currentTime + duration
+    );
+
     // Play the sound
     osc1.start(audioContext.currentTime);
     osc2.start(audioContext.currentTime);
     osc1.stop(audioContext.currentTime + duration);
     osc2.stop(audioContext.currentTime + duration);
-    
   } catch (error) {
     console.warn("Error creating landing sound:", error);
   }
@@ -700,11 +746,43 @@ const gameState = {
   nextPlatformY: 2,
   platformSpacing: 3.5, // Increased from 2.5 for more spacing
   score: 0,
+  highScore: 0,
   keys: {
     left: false,
     right: false,
   },
 };
+
+// High score management functions
+function loadHighScore(): number {
+  try {
+    const saved = localStorage.getItem("lgtm-2025-highscore");
+    return saved ? parseInt(saved, 10) : 0;
+  } catch (error) {
+    console.warn("Could not load high score from localStorage:", error);
+    return 0;
+  }
+}
+
+function saveHighScore(score: number): void {
+  try {
+    localStorage.setItem("lgtm-2025-highscore", score.toString());
+  } catch (error) {
+    console.warn("Could not save high score to localStorage:", error);
+  }
+}
+
+function updateHighScore(currentScore: number): boolean {
+  if (currentScore > gameState.highScore) {
+    gameState.highScore = currentScore;
+    saveHighScore(currentScore);
+    return true; // New high score achieved
+  }
+  return false;
+}
+
+// Initialize high score from localStorage
+gameState.highScore = loadHighScore();
 
 // Difficulty progression functions
 function getDifficultyMovementChance(): number {
@@ -924,7 +1002,10 @@ createPlatform(0, -2);
 function generatePlatforms() {
   while (gameState.platforms.length < 50) {
     // Calculate viewport bounds for platform placement
-    const viewportHalfWidth = (camera.aspect * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.position.z);
+    const viewportHalfWidth =
+      camera.aspect *
+      Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) *
+      camera.position.z;
     const x = (Math.random() - 0.5) * (viewportHalfWidth * 1.8); // Use 90% of viewport width for platform placement
     createPlatform(x, gameState.nextPlatformY);
     // Use dynamic spacing that increases with difficulty
@@ -966,8 +1047,8 @@ function checkPlatformCollision() {
       gameState.player.position.y = platformTop + playerRadius;
 
       // Calculate pitch based on score for progression feeling - much slower progression
-      const pitchMultiplier = 1 + (gameState.score * 0.005); // Changed from 0.02 to 0.005 - 4x slower
-      
+      const pitchMultiplier = 1 + gameState.score * 0.005; // Changed from 0.02 to 0.005 - 4x slower
+
       // Play landing sound with pitch variation
       createLandingSound(pitchMultiplier);
 
@@ -1005,6 +1086,8 @@ function checkPlatformCollision() {
       );
       if (currentScore > gameState.score) {
         gameState.score = currentScore;
+        // Check for new high score
+        updateHighScore(currentScore);
       }
 
       break;
@@ -1069,7 +1152,10 @@ function updateGame() {
   gameState.player.position.y += gameState.player.velocity.y;
 
   // Screen wrapping for horizontal movement - use actual viewport bounds
-  const viewportHalfWidth = (camera.aspect * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.position.z);
+  const viewportHalfWidth =
+    camera.aspect *
+    Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) *
+    camera.position.z;
   if (gameState.player.position.x > viewportHalfWidth) {
     gameState.player.position.x = -viewportHalfWidth;
   } else if (gameState.player.position.x < -viewportHalfWidth) {
@@ -1335,16 +1421,19 @@ function updateGame() {
   });
 
   // Update score display
-  scoreElement.textContent = `${gameState.score}`;
+  scoreElement.textContent = `SCORE ${gameState.score}`;
+
+  // Update high score display
+  highScoreElement.textContent = `BEST ${gameState.highScore}`;
 
   // Game over check (fell too far below screen) - now relative to world position
   if (gameState.player.position.y + gameState.world.offset < -10) {
     // Play fall sound effect
     createFallSound();
-    
+
     // Restart background music for fresh start
     restartBackgroundMusic();
-    
+
     // Reset game
     gameState.player.position.x = 0;
     gameState.player.position.y = 0;
@@ -1578,13 +1667,28 @@ scoreElement.style.color = "#c4ff00";
 scoreElement.style.fontSize = "40px";
 scoreElement.style.fontFamily = "'DepartureMono', 'Courier New', monospace";
 scoreElement.style.zIndex = "1000";
-scoreElement.style.textShadow = "2px 2px 4px rgba(0,0,0,0.8)";
+scoreElement.style.textShadow =
+  "0 0 10px #c4ff00, 0 0 20px #c4ff00, 0 0 30px #c4ff00, 0 0 40px #c4ff00, 2px 2px 4px rgba(0,0,0,0.8)";
 scoreElement.textContent = "0";
 document.body.appendChild(scoreElement);
 
+// Add UI for high score display
+const highScoreElement = document.createElement("div");
+highScoreElement.style.position = "fixed";
+highScoreElement.style.top = "20px";
+highScoreElement.style.left = "20px";
+highScoreElement.style.color = "#c4ff00";
+highScoreElement.style.fontSize = "40px";
+highScoreElement.style.fontFamily = "'DepartureMono', 'Courier New', monospace";
+highScoreElement.style.zIndex = "1000";
+highScoreElement.style.textShadow =
+  "0 0 10px #c4ff00, 0 0 20px #c4ff00, 0 0 30px #c4ff00, 0 0 40px #c4ff00, 2px 2px 4px rgba(0,0,0,0.8)";
+highScoreElement.textContent = `BEST: ${gameState.highScore}`;
+document.body.appendChild(highScoreElement);
+
 // Add click listener to initialize audio context on first user interaction
-document.addEventListener('click', initializeAudio, { once: true });
-document.addEventListener('keydown', initializeAudio, { once: true });
+document.addEventListener("click", initializeAudio, { once: true });
+document.addEventListener("keydown", initializeAudio, { once: true });
 
 // Animation loop
 function animate() {
