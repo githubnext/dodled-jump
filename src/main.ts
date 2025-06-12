@@ -2405,6 +2405,20 @@ muteButtonElement.textContent = isMuted ? "SOUND OFF" : "SOUND ON";
 muteButtonElement.addEventListener("click", toggleMute);
 document.body.appendChild(muteButtonElement);
 
+// Add UI for LGTM 2025 text
+const lgtmElement = document.createElement("div");
+lgtmElement.style.position = "fixed";
+lgtmElement.style.bottom = "50px";
+lgtmElement.style.right = "70px";
+lgtmElement.style.color = "#00ff40";
+lgtmElement.style.fontSize = "40px";
+lgtmElement.style.fontFamily = "'DepartureMono', 'Courier New', monospace";
+lgtmElement.style.zIndex = "1000";
+lgtmElement.style.textShadow =
+  "0 0 10px #00ff40, 0 0 20px #00ff40, 0 0 40px #00ff40, 0 0 80px #00ff40";
+lgtmElement.textContent = "LGTM 2025";
+document.body.appendChild(lgtmElement);
+
 // Add UI for start game prompt
 const startPromptElement = document.createElement("div");
 startPromptElement.style.position = "fixed";
