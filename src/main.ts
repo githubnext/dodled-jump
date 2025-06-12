@@ -1139,7 +1139,7 @@ function checkPlatformCollision() {
       gameState.player.velocity.y = gameState.jumpVelocity;
       gameState.player.onGround = true;
       gameState.player.position.y = platformTop + playerRadius;
-      
+
       // Reset double jump availability
       gameState.player.doubleJumpAvailable = true;
       gameState.player.hasDoubleJumped = false;
@@ -1414,8 +1414,11 @@ function updateGame() {
   }
 
   // Handle double jump input (only on key press, not hold)
-  if ((keyPressed["ArrowUp"] || keyPressed["KeyW"] || keyPressed["Space"]) && 
-      gameState.player.doubleJumpAvailable && !gameState.player.hasDoubleJumped) {
+  if (
+    (keyPressed["ArrowUp"] || keyPressed["KeyW"] || keyPressed["Space"]) &&
+    gameState.player.doubleJumpAvailable &&
+    !gameState.player.hasDoubleJumped
+  ) {
     // Perform double jump
     gameState.player.velocity.y = gameState.doubleJumpVelocity;
     gameState.player.hasDoubleJumped = true;
@@ -1857,7 +1860,7 @@ function updateGame() {
   }
 
   // Reset key pressed states for next frame
-  Object.keys(keyPressed).forEach(key => {
+  Object.keys(keyPressed).forEach((key) => {
     keyPressed[key] = false;
   });
 }
