@@ -1953,13 +1953,6 @@ function updateGame() {
   // Update high score display
   highScoreElement.textContent = `BEST ${gameState.highScore}`;
 
-  // Show/hide start prompt based on game state
-  if (gameState.gameStarted || gameState.introAnimation.active) {
-    startPromptElement.style.display = "none";
-  } else {
-    startPromptElement.style.display = "block";
-  }
-
   // Game over check (fell too far below screen) - now relative to world position
   if (gameState.player.position.y + gameState.world.offset < -10) {
     // Play fall sound effect
@@ -2031,6 +2024,13 @@ function updateGame() {
       positions[i3 + 2] = (Math.random() - 0.5) * 30; // z - wider depth spread
     }
     particles.geometry.attributes.position.needsUpdate = true;
+  }
+
+  // Show/hide start prompt based on game state (always check this)
+  if (gameState.gameStarted || gameState.introAnimation.active) {
+    startPromptElement.style.display = "none";
+  } else {
+    startPromptElement.style.display = "block";
   }
 
   // Reset key pressed states for next frame
@@ -2289,9 +2289,15 @@ startPromptElement.style.fontFamily =
   "'DepartureMono', 'Courier New', monospace";
 startPromptElement.style.zIndex = "1000";
 startPromptElement.style.textAlign = "center";
+startPromptElement.style.cursor = "pointer";
 startPromptElement.style.textShadow =
   "0 0 10px #c4ff00, 0 0 20px #c4ff00, 0 0 40px #c4ff00, 0 0 80px #c4ff00";
 startPromptElement.innerHTML = "PRESS SPACE TO START";
+startPromptElement.addEventListener("click", () => {
+  if (!gameState.gameStarted) {
+    startGame();
+  }
+});
 document.body.appendChild(startPromptElement);
 
 // Initialize audio immediately on page load
