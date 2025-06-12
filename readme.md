@@ -1,6 +1,6 @@
 # 👾 DoDLed Jump
 
-👯 A vibe coding experiment by @terkelg and @colebemis
+👯 A vibe coding experiment by [@terkelg](https://github.com/terkelg) and [@colebemis](https://github.com/terkelg)
 
 **[gh.io/dodled-jump](https://gh.io/dodled-jump)**
 
