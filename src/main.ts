@@ -837,7 +837,11 @@ const gameState = {
   platforms: [] as Array<{
     position: { x: number; y: number };
     size: { width: number; height: number };
-    mesh: THREE.Mesh;
+    cubes: Array<{
+      mesh: THREE.Mesh;
+      position: { x: number; y: number };
+      isHit: boolean; // Track if this cube has been hit by the player
+    }>;
     colorIndex: number; // Store the color index for explosion matching
     platformIndex: number; // Platform creation index for consistent behavior
     // Movement properties for difficulty progression
@@ -988,15 +992,25 @@ function getDifficultyMovementRange(): number {
   return minRange + Math.random() * (baseRange - minRange);
 }
 
-function getDifficultyPlatformWidth(): number {
-  // Gradually decrease platform width to make precision more important
-  // At score 0: 3.0 width (easy)
-  // At score 25: 2.7 width
-  // At score 50+: 2.4 width (cap - still reasonable)
-  const minWidth = 2.4;
-  const maxWidth = 3.0;
-  const reduction = Math.min(0.6, (gameState.score / 50) * 0.6);
-  return Math.max(minWidth, maxWidth - reduction);
+function getDifficultyPlatformCubeCount(): number {
+  // Gradually decrease number of cubes to make precision more important
+  // At score 0: 4 cubes (easy)
+  // At score 25: 3 cubes
+  // At score 50+: 2 cubes (cap - still reasonable)
+  const score = gameState.score;
+
+  if (score <= 25) {
+    // Score 0-25: 4 to 3 cubes
+    const t = score / 25;
+    return Math.floor(4 - t * 1); // 4 to 3
+  } else if (score <= 50) {
+    // Score 25-50: 3 to 2 cubes
+    const t = (score - 25) / 25;
+    return Math.floor(3 - t * 1); // 3 to 2
+  } else {
+    // Score 50+: cap at 2 cubes
+    return 2;
+  }
 }
 
 function getDifficultyGravity(): number {
@@ -1011,23 +1025,24 @@ function getDifficultyGravity(): number {
 // Platform geometry will be created dynamically based on difficulty
 // Made platforms deeper for 3D effect - width will vary based on score
 
-// Ultra-bright bloom-optimized colors for platforms - maximum glow effect with better variety
-const platformColors = [
-  0x00ff00, // Pure lime green - maximum bloom intensity
-  0x00ffff, // Cyan - cool bright bloom
-  0xffff00, // Pure yellow - intense bloom
-  0xff8000, // Bright orange - warm bloom glow
-];
-
-// Create platform material function to get different colors
-function createPlatformMaterial(colorIndex: number) {
-  const color = platformColors[colorIndex % platformColors.length];
+// Create platform materials - gray for unlit cubes, green for hit cubes
+function createGrayCubeMaterial() {
   return new THREE.MeshStandardMaterial({
-    color: color,
-    roughness: 0.05, // Even smoother for maximum color brightness
-    metalness: 0.0, // No metallic properties for pure color
-    emissive: color,
-    emissiveIntensity: 0.6, // Higher emission for super bright, glowing effect
+    color: 0xd8c0d8, // Medium gray with stronger pinkish/purple tint
+    roughness: 0.05,
+    metalness: 0.0,
+    emissive: 0xd8c0d8,
+    emissiveIntensity: 0.3, // Medium brightness - between 0.2 and 0.4
+  });
+}
+
+function createGreenCubeMaterial() {
+  return new THREE.MeshStandardMaterial({
+    color: 0x00ff00, // Bright green
+    roughness: 0.05,
+    metalness: 0.0,
+    emissive: 0x00ff00,
+    emissiveIntensity: 0.6, // Glowing effect
   });
 }
 
@@ -1114,7 +1129,12 @@ function createPlatform(x: number, y: number) {
   // Get current difficulty-based properties
   const movementSpeed = getDifficultyMovementSpeed();
   let movementRange = getDifficultyMovementRange();
-  const platformWidth = getDifficultyPlatformWidth();
+  const cubeCount = getDifficultyPlatformCubeCount();
+
+  // Each cube is 1x1x1 unit
+  const cubeSize = 1;
+  const cubeSpacing = 1.1; // Smaller gap between cubes
+  const platformWidth = cubeCount * cubeSpacing;
 
   // Calculate viewport bounds to ensure movement range doesn't exceed visible area
   const viewportHalfWidth =
@@ -1135,16 +1155,35 @@ function createPlatform(x: number, y: number) {
   // Use global counter for consistent indexing across all platforms ever created
   const platformIndex = globalPlatformCounter++;
 
-  // Create geometry with dynamic width
-  const dynamicPlatformGeometry = new THREE.BoxGeometry(platformWidth, 0.3, 1);
+  // Create individual cubes
+  const cubes = [];
+  const cubeGeometry = new THREE.BoxGeometry(cubeSize, cubeSize, cubeSize);
+
+  for (let i = 0; i < cubeCount; i++) {
+    // Calculate cube position (centered around the platform x position)
+    const cubeX = x + (i - (cubeCount - 1) / 2) * cubeSpacing;
+    const cubeY = y;
+
+    const cubeMesh = new THREE.Mesh(cubeGeometry, createGrayCubeMaterial());
+    cubeMesh.position.set(cubeX, cubeY, 0);
+
+    // Add slight random rotation to cubes for more 3D variety
+    cubeMesh.rotation.z = (Math.random() - 0.5) * 0.1;
+    cubeMesh.rotation.x = (Math.random() - 0.5) * 0.05;
+
+    scene.add(cubeMesh);
+
+    cubes.push({
+      mesh: cubeMesh,
+      position: { x: cubeX, y: cubeY },
+      isHit: false,
+    });
+  }
 
   const platform = {
     position: { x, y },
-    size: { width: platformWidth, height: 0.3 },
-    mesh: new THREE.Mesh(
-      dynamicPlatformGeometry,
-      createPlatformMaterial(colorIndex)
-    ),
+    size: { width: platformWidth, height: cubeSize },
+    cubes: cubes,
     colorIndex: colorIndex, // Store the color index for explosion matching
     platformIndex: platformIndex, // Store platform creation index for consistent behavior
     movement: {
@@ -1156,13 +1195,7 @@ function createPlatform(x: number, y: number) {
     },
   };
 
-  platform.mesh.position.set(x, y, 0);
-  // Add slight random rotation to platforms for more 3D variety
-  platform.mesh.rotation.z = (Math.random() - 0.5) * 0.1;
-  platform.mesh.rotation.x = (Math.random() - 0.5) * 0.05;
-  scene.add(platform.mesh);
   gameState.platforms.push(platform);
-
   return platform;
 }
 
@@ -1199,78 +1232,79 @@ function checkPlatformCollision() {
     const playerY = gameState.player.position.y;
     const playerRadius = gameState.player.radius;
 
-    // Simple AABB collision detection
-    const platformLeft = platform.position.x - platform.size.width / 2;
-    const platformRight = platform.position.x + platform.size.width / 2;
-    const platformTop = platform.position.y + platform.size.height / 2;
-    const platformBottom = platform.position.y - platform.size.height / 2;
+    // Check collision with individual cubes
+    for (const cube of platform.cubes) {
+      const cubeLeft = cube.position.x - 0.5; // cube is 1x1 unit
+      const cubeRight = cube.position.x + 0.5;
+      const cubeTop = cube.position.y + 0.5;
+      const cubeBottom = cube.position.y - 0.5;
 
-    // Check if player is above the platform and within x bounds
-    if (
-      playerX + playerRadius > platformLeft &&
-      playerX - playerRadius < platformRight &&
-      playerY - playerRadius <= platformTop &&
-      playerY - playerRadius >= platformBottom
-    ) {
-      // Initialize audio on first interaction if needed
-      if (!isAudioInitialized) {
-        initializeAudio();
+      // Check if player is above the cube and within x bounds
+      if (
+        playerX + playerRadius > cubeLeft &&
+        playerX - playerRadius < cubeRight &&
+        playerY - playerRadius <= cubeTop &&
+        playerY - playerRadius >= cubeBottom
+      ) {
+        // Initialize audio on first interaction if needed
+        if (!isAudioInitialized) {
+          initializeAudio();
+        }
+
+        // Player lands on cube - turn it green if not already hit
+        if (!cube.isHit) {
+          cube.isHit = true;
+          cube.mesh.material = createGreenCubeMaterial();
+          
+          // Increment score for each new cube hit
+          gameState.score++;
+          // Check for new high score
+          updateHighScore(gameState.score);
+        }
+
+        gameState.player.velocity.y = gameState.jumpVelocity;
+        gameState.player.onGround = true;
+        gameState.player.position.y = cubeTop + playerRadius;
+
+        // Reset double jump availability
+        gameState.player.doubleJumpAvailable = true;
+        gameState.player.hasDoubleJumped = false;
+
+        // Calculate pitch based on score for progression feeling - much slower progression
+        const pitchMultiplier = 1 + gameState.score * 0.005; // Changed from 0.02 to 0.005 - 4x slower
+
+        // Play landing sound with pitch variation
+        createLandingSound(pitchMultiplier);
+
+        // Create explosion at collision point
+        const explosionX = playerX;
+        const explosionY = cubeTop; // Right at the cube surface
+        const explosionColor = 0x00ff00; // Green for all cubes now
+        createExplosion(explosionX, explosionY, explosionColor);
+
+        // Trigger glitch effect on platform hit
+        triggerGlitch();
+
+        // Start spin effect with random axis (only 20% chance) - play special sound
+        if (Math.random() < 0.2) {
+          gameState.player.spinning = true;
+          gameState.player.spinProgress = 0;
+
+          // Generate a random spin axis (normalized)
+          gameState.player.spinAxis
+            .set(
+              (Math.random() - 0.5) * 2,
+              (Math.random() - 0.5) * 2,
+              (Math.random() - 0.5) * 2
+            )
+            .normalize();
+
+          // Play a higher pitched sound for trick landing
+          createJumpSound();
+        }
+
+        return; // Exit after hitting any cube
       }
-
-      // Player lands on platform
-      gameState.player.velocity.y = gameState.jumpVelocity;
-      gameState.player.onGround = true;
-      gameState.player.position.y = platformTop + playerRadius;
-
-      // Reset double jump availability
-      gameState.player.doubleJumpAvailable = true;
-      gameState.player.hasDoubleJumped = false;
-
-      // Calculate pitch based on score for progression feeling - much slower progression
-      const pitchMultiplier = 1 + gameState.score * 0.005; // Changed from 0.02 to 0.005 - 4x slower
-
-      // Play landing sound with pitch variation
-      createLandingSound(pitchMultiplier);
-
-      // Create explosion at collision point
-      const explosionX = playerX;
-      const explosionY = platformTop; // Right at the platform surface
-      const platformColor =
-        platformColors[platform.colorIndex % platformColors.length];
-      createExplosion(explosionX, explosionY, platformColor);
-
-      // Trigger glitch effect on platform hit
-      triggerGlitch();
-
-      // Start spin effect with random axis (only 20% chance) - play special sound
-      if (Math.random() < 0.2) {
-        gameState.player.spinning = true;
-        gameState.player.spinProgress = 0;
-
-        // Generate a random spin axis (normalized)
-        gameState.player.spinAxis
-          .set(
-            (Math.random() - 0.5) * 2,
-            (Math.random() - 0.5) * 2,
-            (Math.random() - 0.5) * 2
-          )
-          .normalize();
-
-        // Play a higher pitched sound for trick landing
-        createJumpSound();
-      }
-
-      // Update score based on height
-      const currentScore = Math.floor(
-        Math.max(0, gameState.player.position.y) / 2
-      );
-      if (currentScore > gameState.score) {
-        gameState.score = currentScore;
-        // Check for new high score
-        updateHighScore(currentScore);
-      }
-
-      break;
     }
   }
 }
@@ -1813,8 +1847,10 @@ function updateGame() {
 
   // Update all platform positions based on world offset
   gameState.platforms.forEach((platform) => {
-    // Update world offset position
-    platform.mesh.position.y = platform.position.y + gameState.world.offset;
+    // Update world offset position for all cubes
+    platform.cubes.forEach((cube) => {
+      cube.mesh.position.y = cube.position.y + gameState.world.offset;
+    });
 
     // NEW MOVEMENT LOGIC: Better distribution pattern
     if (gameState.score >= 5) {
@@ -1880,8 +1916,17 @@ function updateGame() {
         }
       }
 
-      // Update mesh position
-      platform.mesh.position.x = platform.position.x;
+      // Update cube positions
+      platform.cubes.forEach((cube, index) => {
+        const cubeOffset = (index - (platform.cubes.length - 1) / 2) * 1.1; // Use same spacing
+        cube.position.x = platform.position.x + cubeOffset;
+        cube.mesh.position.x = cube.position.x;
+      });
+    } else {
+      // Update cube mesh positions even when not moving
+      platform.cubes.forEach((cube) => {
+        cube.mesh.position.x = cube.position.x;
+      });
     }
   });
 
@@ -1908,7 +1953,8 @@ function updateGame() {
   // Remove platforms that are too far below (relative to player position)
   gameState.platforms = gameState.platforms.filter((platform) => {
     if (platform.position.y < gameState.player.position.y - 15) {
-      scene.remove(platform.mesh);
+      // Remove all cubes from the scene
+      platform.cubes.forEach((cube) => scene.remove(cube.mesh));
       return false;
     }
     return true;
@@ -1988,7 +2034,9 @@ function updateGame() {
     );
 
     // Clear platforms and regenerate
-    gameState.platforms.forEach((platform) => scene.remove(platform.mesh));
+    gameState.platforms.forEach((platform) => {
+      platform.cubes.forEach((cube) => scene.remove(cube.mesh));
+    });
     gameState.platforms = [];
     gameState.nextPlatformY = 2;
     globalPlatformCounter = 0; // Reset the global counter
@@ -2237,12 +2285,12 @@ const scoreElement = document.createElement("div");
 scoreElement.style.position = "fixed";
 scoreElement.style.top = "50px";
 scoreElement.style.right = "70px"; // Changed from left to right
-scoreElement.style.color = "#c4ff00";
+scoreElement.style.color = "#00ff40";
 scoreElement.style.fontSize = "40px";
 scoreElement.style.fontFamily = "'DepartureMono', 'Courier New', monospace";
 scoreElement.style.zIndex = "1000";
 scoreElement.style.textShadow =
-  "0 0 10px #c4ff00, 0 0 20px #c4ff00, 0 0 40px #c4ff00, 0 0 80px #c4ff00";
+  "0 0 10px #00ff40, 0 0 20px #00ff40, 0 0 40px #00ff40, 0 0 80px #00ff40";
 scoreElement.textContent = "SCORE 0";
 document.body.appendChild(scoreElement);
 
@@ -2251,12 +2299,12 @@ const highScoreElement = document.createElement("div");
 highScoreElement.style.position = "fixed";
 highScoreElement.style.top = "50px";
 highScoreElement.style.left = "70px";
-highScoreElement.style.color = "#c4ff00";
+highScoreElement.style.color = "#00ff40";
 highScoreElement.style.fontSize = "40px";
 highScoreElement.style.fontFamily = "'DepartureMono', 'Courier New', monospace";
 highScoreElement.style.zIndex = "1000";
 highScoreElement.style.textShadow =
-  "0 0 10px #c4ff00, 0 0 20px #c4ff00, 0 0 40px #c4ff00, 0 0 80px #c4ff00";
+  "0 0 10px #00ff40, 0 0 20px #00ff40, 0 0 40px #00ff40, 0 0 80px #00ff40";
 highScoreElement.textContent = `BEST ${gameState.highScore}`;
 document.body.appendChild(highScoreElement);
 
@@ -2265,14 +2313,14 @@ const muteButtonElement = document.createElement("div");
 muteButtonElement.style.position = "fixed";
 muteButtonElement.style.bottom = "50px";
 muteButtonElement.style.left = "70px";
-muteButtonElement.style.color = "#c4ff00";
+muteButtonElement.style.color = "#00ff40";
 muteButtonElement.style.fontSize = "40px";
 muteButtonElement.style.fontFamily =
   "'DepartureMono', 'Courier New', monospace";
 muteButtonElement.style.zIndex = "1000";
 muteButtonElement.style.cursor = "pointer";
 muteButtonElement.style.textShadow =
-  "0 0 10px #c4ff00, 0 0 20px #c4ff00, 0 0 40px #c4ff00, 0 0 80px #c4ff00";
+  "0 0 10px #00ff40, 0 0 20px #00ff40, 0 0 40px #00ff40, 0 0 80px #00ff40";
 muteButtonElement.textContent = isMuted ? "SOUND OFF" : "SOUND ON";
 muteButtonElement.addEventListener("click", toggleMute);
 document.body.appendChild(muteButtonElement);
@@ -2283,7 +2331,7 @@ startPromptElement.style.position = "fixed";
 startPromptElement.style.bottom = "20%";
 startPromptElement.style.left = "50%";
 startPromptElement.style.transform = "translateX(-50%)";
-startPromptElement.style.color = "#c4ff00";
+startPromptElement.style.color = "#00ff40";
 startPromptElement.style.fontSize = "40px";
 startPromptElement.style.fontFamily =
   "'DepartureMono', 'Courier New', monospace";
@@ -2291,7 +2339,7 @@ startPromptElement.style.zIndex = "1000";
 startPromptElement.style.textAlign = "center";
 startPromptElement.style.cursor = "pointer";
 startPromptElement.style.textShadow =
-  "0 0 10px #c4ff00, 0 0 20px #c4ff00, 0 0 40px #c4ff00, 0 0 80px #c4ff00";
+  "0 0 10px #00ff40, 0 0 20px #00ff40, 0 0 40px #00ff40, 0 0 80px #00ff40";
 startPromptElement.innerHTML = "PRESS SPACE TO START";
 startPromptElement.addEventListener("click", () => {
   if (!gameState.gameStarted) {
