@@ -1,3 +1,11 @@
+/* Disable text selection throughout the entire application */
+* {
+  user-select: none; /* Disable text selection */
+  -webkit-user-select: none; /* Safari */
+  -moz-user-select: none; /* Firefox */
+  -ms-user-select: none; /* IE10+/Edge */
+}
+
 @font-face {
   font-family: "DepartureMono";
   src: url("/DepartureMono-Regular.woff2") format("woff2");
@@ -15,14 +23,26 @@ body {
   margin: 0;
   min-height: 100vh;
   overflow: hidden; /* Prevent scrollbars */
+  user-select: none; /* Disable text selection */
+  -webkit-user-select: none; /* Safari */
+  -moz-user-select: none; /* Firefox */
+  -ms-user-select: none; /* IE10+/Edge */
 }
 
 #app {
   width: 100vw;
   height: 100vh;
   display: block; /* Ensure #app behaves as a block and fills space */
+  user-select: none; /* Disable text selection */
+  -webkit-user-select: none; /* Safari */
+  -moz-user-select: none; /* Firefox */
+  -ms-user-select: none; /* IE10+/Edge */
 }
 
 canvas {
   display: block; /* Prevent extra space below canvas */
+  user-select: none; /* Disable text selection */
+  -webkit-user-select: none; /* Safari */
+  -moz-user-select: none; /* Firefox */
+  -ms-user-select: none; /* IE10+/Edge */
 }
