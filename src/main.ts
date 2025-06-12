@@ -794,6 +794,28 @@ function createLandingSound(pitch: number = 1) {
 }
 
 // ===========================================
+// CURSOR MANAGEMENT
+// ===========================================
+
+function hideCursor() {
+  document.body.style.cursor = "none";
+}
+
+function showCursor() {
+  document.body.style.cursor = "default";
+}
+
+function updateCursorVisibility() {
+  // Hide cursor when game is active (during intro animation or actual gameplay)
+  // Show cursor when game is inactive (start screen)
+  if (gameState.gameStarted || gameState.introAnimation.active) {
+    hideCursor();
+  } else {
+    showCursor();
+  }
+}
+
+// ===========================================
 // GAME CONFIGURATION - Easy to change flags
 // ===========================================
 const ENABLE_CUBE_FALLING = true; // Set to false to disable falling cube behavior
@@ -1331,6 +1353,9 @@ function startGame() {
   gameState.introAnimation.active = true;
   gameState.introAnimation.progress = 0;
   gameState.introAnimation.delayProgress = 0; // Reset delay progress
+
+  // Hide cursor when game starts
+  updateCursorVisibility();
 
   // Initialize player position at center and zero velocity (will start falling after delay)
   gameState.player.position.x = 0;
@@ -2063,6 +2088,9 @@ function updateGame() {
     gameState.introAnimation.active = false;
     gameState.introAnimation.progress = 0;
     gameState.introAnimation.delayProgress = 0; // Reset delay progress
+
+    // Show cursor when game ends
+    updateCursorVisibility();
     gameState.player.position.x = 0;
     gameState.player.position.y = 0;
     gameState.player.velocity.x = 0;
@@ -2132,10 +2160,16 @@ function updateGame() {
     startPromptElement.style.display = "block";
   }
 
+  // Update cursor visibility based on game state
+  updateCursorVisibility();
+
   // Reset key pressed states for next frame
   Object.keys(keyPressed).forEach((key) => {
     keyPressed[key] = false;
   });
+
+  // Update cursor visibility based on game state
+  updateCursorVisibility();
 }
 
 // Generate initial platforms
@@ -2401,6 +2435,9 @@ document.body.appendChild(startPromptElement);
 
 // Initialize audio immediately on page load
 initializeAudio();
+
+// Set initial cursor visibility
+updateCursorVisibility();
 
 // Animation loop
 function animate() {
