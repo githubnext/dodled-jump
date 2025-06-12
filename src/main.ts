@@ -432,7 +432,8 @@ let isAudioInitialized = false;
 let backgroundMusic: AudioBufferSourceNode | null = null;
 let musicBuffer: AudioBuffer | null = null;
 let musicGainNode: GainNode | null = null;
-let isMuted = false; // Track mute state
+let isMuted = false;
+let musicFadeTimeout: number | null = null; // Track fade timeout for cleanup // Track mute state
 
 // Load and decode the background music
 async function loadBackgroundMusic() {
@@ -453,12 +454,16 @@ function startBackgroundMusic() {
   if (!audioContext || !musicBuffer || backgroundMusic) return;
 
   try {
+    // Clear any pending fade timeout
+    if (musicFadeTimeout) {
+      clearTimeout(musicFadeTimeout);
+      musicFadeTimeout = null;
+    }
+
     // Create gain node for volume control (recreate each time)
     musicGainNode = audioContext.createGain();
-    musicGainNode.gain.setValueAtTime(
-      isMuted ? 0 : 0.3,
-      audioContext.currentTime
-    ); // Set volume to 30% or 0 if muted
+    // Start at 0 volume for fade in
+    musicGainNode.gain.setValueAtTime(0, audioContext.currentTime);
     musicGainNode.connect(audioContext.destination);
 
     // Create and configure the audio source
@@ -479,7 +484,15 @@ function startBackgroundMusic() {
 
     // Start playing
     backgroundMusic.start(0);
-    console.log("Background music started");
+
+    // Fade in over 1.2 seconds to target volume
+    const targetVolume = isMuted ? 0 : 0.3;
+    musicGainNode.gain.linearRampToValueAtTime(
+      targetVolume,
+      audioContext.currentTime + 1.2
+    );
+
+    console.log("Background music started with fade in");
   } catch (error) {
     console.error("Error starting background music:", error);
   }
@@ -487,38 +500,78 @@ function startBackgroundMusic() {
 
 // Stop background music
 function stopBackgroundMusic() {
-  if (backgroundMusic) {
-    try {
-      backgroundMusic.stop();
-      backgroundMusic.disconnect();
-      backgroundMusic = null;
-    } catch (error) {
-      console.error("Error stopping background music:", error);
-    }
-  }
+  if (!backgroundMusic || !musicGainNode || !audioContext) return;
 
-  // Also disconnect and cleanup the gain node
-  if (musicGainNode) {
-    try {
-      musicGainNode.disconnect();
-      musicGainNode = null;
-    } catch (error) {
-      console.error("Error disconnecting music gain node:", error);
+  try {
+    // Clear any pending fade timeout
+    if (musicFadeTimeout) {
+      clearTimeout(musicFadeTimeout);
+      musicFadeTimeout = null;
     }
-  }
 
-  console.log("Background music stopped");
+    // Fade out over 0.6 seconds
+    const currentGain = musicGainNode.gain.value;
+    musicGainNode.gain.cancelScheduledValues(audioContext.currentTime);
+    musicGainNode.gain.setValueAtTime(currentGain, audioContext.currentTime);
+    musicGainNode.gain.linearRampToValueAtTime(
+      0,
+      audioContext.currentTime + 0.6
+    );
+
+    // Stop and cleanup after fade completes
+    musicFadeTimeout = setTimeout(() => {
+      if (backgroundMusic) {
+        try {
+          backgroundMusic.stop();
+          backgroundMusic.disconnect();
+          backgroundMusic = null;
+        } catch (error) {
+          console.error("Error stopping background music:", error);
+        }
+      }
+
+      // Also disconnect and cleanup the gain node
+      if (musicGainNode) {
+        try {
+          musicGainNode.disconnect();
+          musicGainNode = null;
+        } catch (error) {
+          console.error("Error disconnecting music gain node:", error);
+        }
+      }
+
+      musicFadeTimeout = null;
+      console.log("Background music stopped with fade out");
+    }, 600); // Wait for fade to complete
+  } catch (error) {
+    console.error("Error fading out background music:", error);
+  }
 }
 
 // Toggle mute state
 function toggleMute() {
   isMuted = !isMuted;
 
-  if (musicGainNode) {
+  if (musicGainNode && audioContext) {
+    // Clear any pending scheduled changes
+    musicGainNode.gain.cancelScheduledValues(audioContext.currentTime);
+
+    // Get current volume to start fade from
+    const currentGain = musicGainNode.gain.value;
+    musicGainNode.gain.setValueAtTime(currentGain, audioContext.currentTime);
+
     if (isMuted) {
-      musicGainNode.gain.setValueAtTime(0, audioContext!.currentTime);
+      // Fade to 0 over 0.3 seconds
+      musicGainNode.gain.linearRampToValueAtTime(
+        0,
+        audioContext.currentTime + 0.3
+      );
     } else {
-      musicGainNode.gain.setValueAtTime(0.3, audioContext!.currentTime);
+      // Fade to 0.3 over 0.3 seconds
+      musicGainNode.gain.linearRampToValueAtTime(
+        0.3,
+        audioContext.currentTime + 0.3
+      );
     }
   }
 
