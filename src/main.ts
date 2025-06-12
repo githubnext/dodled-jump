@@ -1869,8 +1869,8 @@ scoreElement.style.fontSize = "40px";
 scoreElement.style.fontFamily = "'DepartureMono', 'Courier New', monospace";
 scoreElement.style.zIndex = "1000";
 scoreElement.style.textShadow =
-  "0 0 10px #c4ff00, 0 0 20px #c4ff00, 0 0 30px #c4ff00, 0 0 40px #c4ff00, 2px 2px 4px rgba(0,0,0,0.8)";
-scoreElement.textContent = "0";
+  "0 0 10px #c4ff00, 0 0 20px #c4ff00, 0 0 40px #c4ff00, 0 0 80px #c4ff00";
+scoreElement.textContent = "SCORE 0";
 document.body.appendChild(scoreElement);
 
 // Add UI for high score display
@@ -1883,25 +1883,25 @@ highScoreElement.style.fontSize = "40px";
 highScoreElement.style.fontFamily = "'DepartureMono', 'Courier New', monospace";
 highScoreElement.style.zIndex = "1000";
 highScoreElement.style.textShadow =
-  "0 0 10px #c4ff00, 0 0 20px #c4ff00, 0 0 30px #c4ff00, 0 0 40px #c4ff00, 2px 2px 4px rgba(0,0,0,0.8)";
+  "0 0 10px #c4ff00, 0 0 20px #c4ff00, 0 0 40px #c4ff00, 0 0 80px #c4ff00";
 highScoreElement.textContent = `BEST ${gameState.highScore}`;
 document.body.appendChild(highScoreElement);
 
 // Add UI for start game prompt
 const startPromptElement = document.createElement("div");
 startPromptElement.style.position = "fixed";
-startPromptElement.style.bottom = "20px";
-startPromptElement.style.left = "20px";
+startPromptElement.style.bottom = "20%";
+startPromptElement.style.left = "50%";
+startPromptElement.style.transform = "translateX(-50%)";
 startPromptElement.style.color = "#c4ff00";
-startPromptElement.style.fontSize = "24px";
+startPromptElement.style.fontSize = "40px";
 startPromptElement.style.fontFamily =
   "'DepartureMono', 'Courier New', monospace";
 startPromptElement.style.zIndex = "1000";
-startPromptElement.style.textAlign = "left";
+startPromptElement.style.textAlign = "center";
 startPromptElement.style.textShadow =
-  "0 0 10px #c4ff00, 0 0 20px #c4ff00, 0 0 30px #c4ff00, 0 0 40px #c4ff00, 2px 2px 4px rgba(0,0,0,0.8)";
-startPromptElement.innerHTML =
-  "PRESS SPACE TO START<br>← A/D ARROW KEYS TO MOVE →";
+  "0 0 10px #c4ff00, 0 0 20px #c4ff00, 0 0 40px #c4ff00, 0 0 80px #c4ff00";
+startPromptElement.innerHTML = "PRESS SPACE TO START";
 document.body.appendChild(startPromptElement);
 
 // Add click listener to initialize audio context on first user interaction
