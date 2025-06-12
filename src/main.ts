@@ -284,7 +284,8 @@ const GlitchShader = {
   `,
 };
 
-// CRT + RGB separation shader for retro effect
+// CRT shader for RGB chromatic aberration, vignette, noise, and barrel distortion
+// (scanlines are now handled by CSS overlay)
 const CRTShader = {
   uniforms: {
     tDiffuse: { value: null },
@@ -345,17 +346,8 @@ const CRTShader = {
       
       vec3 color = vec3(r, g, b);
       
-      // Enhanced scanlines with movement
-      float scanlineFreq = resolution.y * 0.5; // Adjust frequency based on resolution
-      float scanlineOffset = time * 2.0; // Slow scrolling scanlines
-      float scanline = sin((uv.y * scanlineFreq + scanlineOffset) * 3.14159);
-      scanline = smoothstep(0.0, 1.0, scanline * 0.5 + 0.5);
-      
-      // Add alternating scanline intensity for more authentic CRT look
-      float alternatingScanline = sin(uv.y * scanlineFreq * 2.0) * 0.5 + 0.5;
-      scanline = mix(scanline, alternatingScanline, 0.3);
-      
-      color *= 1.0 - scanlineIntensity + scanlineIntensity * scanline;
+
+      color *= 0.8;
       
       // Vignette effect
       vec2 vignetteUV = uv * (1.0 - uv.yx);
@@ -366,10 +358,8 @@ const CRTShader = {
       // TV noise
       float noise = random(uv + time * 0.1) * noiseIntensity;
       color += noise;
-      
       // Subtle color boost for retro feel
       color = pow(color, vec3(0.9));
-      color *= 1.1;
       
       gl_FragColor = vec4(color, 1.0);
     }
@@ -395,7 +385,7 @@ const glitchPass = new ShaderPass(GlitchShader);
 glitchPass.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
 composer.addPass(glitchPass);
 
-// Add CRT shader pass for retro RGB effects
+// Add CRT shader pass for RGB aberration, vignette, noise, and barrel distortion
 const crtPass = new ShaderPass(CRTShader);
 crtPass.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
 composer.addPass(crtPass);
@@ -408,6 +398,11 @@ if (appElement) {
   console.error("Could not find #app element");
   document.body.appendChild(renderer.domElement); // Fallback to body
 }
+
+// Add CRT scanlines overlay
+const crtOverlay = document.createElement("div");
+crtOverlay.className = "crt-overlay";
+document.body.appendChild(crtOverlay);
 
 // Add lighting for platform shading
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.3); // Soft ambient light
@@ -2450,7 +2445,7 @@ function animate() {
   const backgroundMaterial = spaceBackground.material as THREE.ShaderMaterial;
   backgroundMaterial.uniforms.time.value = Date.now() * 0.001;
 
-  // Update CRT shader time uniform for animated effects
+  // Update CRT shader time uniform for animated noise
   crtPass.uniforms.time.value = Date.now() * 0.001;
 
   // Update glitch shader time uniform
