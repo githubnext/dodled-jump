@@ -793,6 +793,11 @@ function createLandingSound(pitch: number = 1) {
   }
 }
 
+// ===========================================
+// GAME CONFIGURATION - Easy to change flags
+// ===========================================
+const ENABLE_CUBE_FALLING = true; // Set to false to disable falling cube behavior
+
 // Game state variables
 const gameState = {
   baseGravity: -0.006, // Base gravity for more floaty feel
@@ -841,6 +846,8 @@ const gameState = {
       mesh: THREE.Mesh;
       position: { x: number; y: number };
       isHit: boolean; // Track if this cube has been hit by the player
+      falling: boolean; // Track if this cube is falling
+      fallVelocity: number; // Falling velocity for this cube
     }>;
     colorIndex: number; // Store the color index for explosion matching
     platformIndex: number; // Platform creation index for consistent behavior
@@ -1177,6 +1184,8 @@ function createPlatform(x: number, y: number) {
       mesh: cubeMesh,
       position: { x: cubeX, y: cubeY },
       isHit: false,
+      falling: false,
+      fallVelocity: 0,
     });
   }
 
@@ -1255,6 +1264,12 @@ function checkPlatformCollision() {
         if (!cube.isHit) {
           cube.isHit = true;
           cube.mesh.material = createGreenCubeMaterial();
+
+          // Start falling behavior (if enabled)
+          if (ENABLE_CUBE_FALLING) {
+            cube.falling = true;
+            cube.fallVelocity = 0; // Start with no initial velocity
+          }
 
           // Increment score for each new cube hit
           gameState.score++;
@@ -1611,6 +1626,12 @@ function updateGame() {
               cube.isHit = true;
               cube.mesh.material = createGreenCubeMaterial();
 
+              // Start falling behavior (if enabled)
+              if (ENABLE_CUBE_FALLING) {
+                cube.falling = true;
+                cube.fallVelocity = 0; // Start with no initial velocity
+              }
+
               // Increment score for each new cube hit
               gameState.score++;
               // Check for new high score
@@ -1873,6 +1894,12 @@ function updateGame() {
   gameState.platforms.forEach((platform) => {
     // Update world offset position for all cubes
     platform.cubes.forEach((cube) => {
+      // Handle falling behavior for hit cubes (if enabled)
+      if (ENABLE_CUBE_FALLING && cube.falling) {
+        cube.fallVelocity += getDifficultyGravity(); // Apply gravity
+        cube.position.y += cube.fallVelocity; // Update cube position
+      }
+
       cube.mesh.position.y = cube.position.y + gameState.world.offset;
     });
 
