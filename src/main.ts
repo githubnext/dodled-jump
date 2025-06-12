@@ -121,6 +121,22 @@ const camera = new THREE.PerspectiveCamera(
 );
 camera.position.set(0, 0, 10); // Moved camera back for better perspective
 
+// Camera state for intro/game transitions
+const cameraState = {
+  introPosition: { x: 0, y: 0, z: 3 }, // Closer position for intro
+  gamePosition: { x: 0, y: 0, z: 10 }, // Normal game position
+  animating: false,
+  animationProgress: 0,
+  animationDuration: 0.6, // 0.6 seconds for much more snappy camera animation
+};
+
+// Set initial camera position to intro position
+camera.position.set(
+  cameraState.introPosition.x,
+  cameraState.introPosition.y,
+  cameraState.introPosition.z
+);
+
 // Set up the renderer
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -700,6 +716,16 @@ const gameState = {
   baseGravity: -0.006, // Base gravity for more floaty feel
   jumpVelocity: 0.25, // Slightly lower jump velocity for more natural arc
   moveSpeed: 0.15,
+  gameStarted: false, // Track if the game has started
+  introAnimation: {
+    active: false,
+    progress: 0,
+    duration: 0.6, // 0.6 seconds for much more snappy camera animation
+    delay: 0.2, // 200ms delay before drop starts (reduced from 500ms)
+    delayProgress: 0, // Track delay progress
+    startPosition: { x: 0, y: 0, z: 0 }, // Center position
+    targetPosition: { x: 0, y: 0, z: 0 }, // Will be set when animation starts
+  },
   player: {
     velocity: { x: 0, y: 0 },
     position: { x: 0, y: 0 },
@@ -1095,11 +1121,49 @@ function checkPlatformCollision() {
   }
 }
 
+// Start the game with intro animation
+function startGame() {
+  if (gameState.gameStarted) return;
+
+  gameState.introAnimation.active = true;
+  gameState.introAnimation.progress = 0;
+  gameState.introAnimation.delayProgress = 0; // Reset delay progress
+
+  // Initialize player position at center and zero velocity (will start falling after delay)
+  gameState.player.position.x = 0;
+  gameState.player.position.y = 0;
+  gameState.player.velocity.x = 0;
+  gameState.player.velocity.y = 0; // Start with zero velocity, gravity will take over after delay
+
+  // Start camera animation
+  cameraState.animating = true;
+  cameraState.animationProgress = 0;
+
+  // Initialize audio on game start
+  if (!isAudioInitialized) {
+    initializeAudio();
+  }
+
+  // Play a special sound for the intro animation
+  createJumpSound(); // This will create a nice sound effect for the start
+}
+
 // Keyboard controls
 const keys: { [key: string]: boolean } = {};
 
 function handleKeyDown(event: KeyboardEvent) {
   keys[event.code] = true;
+
+  // Handle space key for starting the game
+  if (event.code === "Space") {
+    if (!gameState.gameStarted) {
+      startGame();
+      return;
+    }
+  }
+
+  // Only handle movement keys if game has started
+  if (!gameState.gameStarted) return;
 
   switch (event.code) {
     case "ArrowLeft":
@@ -1115,6 +1179,9 @@ function handleKeyDown(event: KeyboardEvent) {
 
 function handleKeyUp(event: KeyboardEvent) {
   keys[event.code] = false;
+
+  // Only handle movement keys if game has started
+  if (!gameState.gameStarted) return;
 
   switch (event.code) {
     case "ArrowLeft":
@@ -1134,6 +1201,120 @@ window.addEventListener("keyup", handleKeyUp);
 // Update game logic including score display
 function updateGame() {
   if (!copilotModel) return;
+
+  // Handle camera animation
+  if (cameraState.animating) {
+    cameraState.animationProgress += 0.016 / cameraState.animationDuration;
+
+    if (cameraState.animationProgress >= 1) {
+      // Camera animation complete
+      cameraState.animating = false;
+      camera.position.set(
+        cameraState.gamePosition.x,
+        cameraState.gamePosition.y,
+        cameraState.gamePosition.z
+      );
+    } else {
+      // Animate camera zoom out
+      const t = cameraState.animationProgress;
+      // Use easeInOutCubic for smooth camera movement (starts slow, speeds up, then slows down)
+      const easedT = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+
+      camera.position.x =
+        cameraState.introPosition.x +
+        (cameraState.gamePosition.x - cameraState.introPosition.x) * easedT;
+      camera.position.y =
+        cameraState.introPosition.y +
+        (cameraState.gamePosition.y - cameraState.introPosition.y) * easedT;
+      camera.position.z =
+        cameraState.introPosition.z +
+        (cameraState.gamePosition.z - cameraState.introPosition.z) * easedT;
+    }
+  }
+
+  // Handle intro animation
+  if (gameState.introAnimation.active) {
+    // Handle delay period first
+    if (
+      gameState.introAnimation.delayProgress < gameState.introAnimation.delay
+    ) {
+      gameState.introAnimation.delayProgress += 0.016; // roughly 60fps
+
+      // Keep model centered and still during delay
+      copilotModel.position.set(0, 0, 0);
+      copilotModel.rotation.set(0, 0, 0);
+
+      return; // Don't do anything else during delay
+    }
+
+    // After delay, apply gravity to player
+    gameState.player.velocity.y += getDifficultyGravity();
+    gameState.player.position.y += gameState.player.velocity.y;
+
+    // Update copilot model position to match player
+    copilotModel.position.x = gameState.player.position.x;
+    copilotModel.position.y = gameState.player.position.y;
+
+    // Check if animation should end (either time-based or when player hits platform)
+    gameState.introAnimation.progress +=
+      0.016 / gameState.introAnimation.duration;
+
+    if (gameState.introAnimation.progress >= 1) {
+      // Animation complete, start the game
+      gameState.introAnimation.active = false;
+      gameState.gameStarted = true;
+    }
+
+    // Check platform collisions during intro to end animation early
+    if (gameState.player.velocity.y <= 0) {
+      // Only check when falling
+      for (const platform of gameState.platforms) {
+        const playerX = gameState.player.position.x;
+        const playerY = gameState.player.position.y;
+        const playerRadius = gameState.player.radius;
+
+        const platformLeft = platform.position.x - platform.size.width / 2;
+        const platformRight = platform.position.x + platform.size.width / 2;
+        const platformTop = platform.position.y + platform.size.height / 2;
+        const platformBottom = platform.position.y - platform.size.height / 2;
+
+        if (
+          playerX + playerRadius > platformLeft &&
+          playerX - playerRadius < platformRight &&
+          playerY - playerRadius <= platformTop &&
+          playerY - playerRadius >= platformBottom
+        ) {
+          // Hit platform - end intro and start game
+          gameState.introAnimation.active = false;
+          gameState.gameStarted = true;
+          gameState.player.position.y = platformTop + playerRadius;
+          gameState.player.velocity.y = gameState.jumpVelocity;
+
+          // Initialize audio on first interaction if needed
+          if (!isAudioInitialized) {
+            initializeAudio();
+          }
+
+          // Play landing sound
+          createLandingSound(1);
+
+          break;
+        }
+      }
+    }
+
+    return; // Don't run normal game logic during intro
+  }
+
+  // Only run game logic if the game has started
+  if (!gameState.gameStarted) {
+    // Keep model centered when game hasn't started
+    if (copilotModel) {
+      copilotModel.position.set(0, 0, 0);
+      copilotModel.rotation.set(0, 0, 0);
+    }
+    return;
+  }
 
   // Handle horizontal movement
   if (gameState.keys.left) {
@@ -1426,6 +1607,13 @@ function updateGame() {
   // Update high score display
   highScoreElement.textContent = `BEST ${gameState.highScore}`;
 
+  // Show/hide start prompt based on game state
+  if (gameState.gameStarted || gameState.introAnimation.active) {
+    startPromptElement.style.display = "none";
+  } else {
+    startPromptElement.style.display = "block";
+  }
+
   // Game over check (fell too far below screen) - now relative to world position
   if (gameState.player.position.y + gameState.world.offset < -10) {
     // Play fall sound effect
@@ -1434,7 +1622,11 @@ function updateGame() {
     // Restart background music for fresh start
     restartBackgroundMusic();
 
-    // Reset game
+    // Reset game state
+    gameState.gameStarted = false;
+    gameState.introAnimation.active = false;
+    gameState.introAnimation.progress = 0;
+    gameState.introAnimation.delayProgress = 0; // Reset delay progress
     gameState.player.position.x = 0;
     gameState.player.position.y = 0;
     gameState.player.velocity.x = 0;
@@ -1444,6 +1636,15 @@ function updateGame() {
     gameState.score = 0;
     gameState.world.offset = 0;
     gameState.world.targetOffset = 0;
+
+    // Reset camera to intro position
+    cameraState.animating = false;
+    cameraState.animationProgress = 0;
+    camera.position.set(
+      cameraState.introPosition.x,
+      cameraState.introPosition.y,
+      cameraState.introPosition.z
+    );
 
     // Clear platforms and regenerate
     gameState.platforms.forEach((platform) => scene.remove(platform.mesh));
@@ -1629,7 +1830,7 @@ loader.load(
     const scale = 1.5 / maxDim; // Made slightly smaller for the game
     copilotModel.scale.setScalar(scale);
 
-    // Set initial player position
+    // Set initial player position - center for the start screen
     gameState.player.position.x = 0;
     gameState.player.position.y = 0;
     copilotModel.position.set(0, 0, 0);
@@ -1683,8 +1884,25 @@ highScoreElement.style.fontFamily = "'DepartureMono', 'Courier New', monospace";
 highScoreElement.style.zIndex = "1000";
 highScoreElement.style.textShadow =
   "0 0 10px #c4ff00, 0 0 20px #c4ff00, 0 0 30px #c4ff00, 0 0 40px #c4ff00, 2px 2px 4px rgba(0,0,0,0.8)";
-highScoreElement.textContent = `BEST: ${gameState.highScore}`;
+highScoreElement.textContent = `BEST ${gameState.highScore}`;
 document.body.appendChild(highScoreElement);
+
+// Add UI for start game prompt
+const startPromptElement = document.createElement("div");
+startPromptElement.style.position = "fixed";
+startPromptElement.style.bottom = "20px";
+startPromptElement.style.left = "20px";
+startPromptElement.style.color = "#c4ff00";
+startPromptElement.style.fontSize = "24px";
+startPromptElement.style.fontFamily =
+  "'DepartureMono', 'Courier New', monospace";
+startPromptElement.style.zIndex = "1000";
+startPromptElement.style.textAlign = "left";
+startPromptElement.style.textShadow =
+  "0 0 10px #c4ff00, 0 0 20px #c4ff00, 0 0 30px #c4ff00, 0 0 40px #c4ff00, 2px 2px 4px rgba(0,0,0,0.8)";
+startPromptElement.innerHTML =
+  "PRESS SPACE TO START<br>← A/D ARROW KEYS TO MOVE →";
+document.body.appendChild(startPromptElement);
 
 // Add click listener to initialize audio context on first user interaction
 document.addEventListener("click", initializeAudio, { once: true });
