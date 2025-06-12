@@ -1798,8 +1798,8 @@ function updateGame() {
     gameState.player.hasDoubleJumped = true;
     gameState.player.doubleJumpAvailable = false;
 
-    // Play jump sound for double jump
-    createJumpSound();
+    // Trigger backflip animation on double jump
+    startBackspin();
   }
 
   // Apply gravity (with difficulty scaling)
