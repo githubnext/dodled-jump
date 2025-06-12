@@ -814,6 +814,54 @@ function updateCursorVisibility() {
 }
 
 // ===========================================
+// BACKSPIN LOGIC - Reusable functions for spin effects
+// ===========================================
+
+// Start a backspin effect with random axis
+function startBackspin() {
+  gameState.player.spinning = true;
+  gameState.player.spinProgress = 0;
+
+  // Generate a random spin axis (normalized)
+  gameState.player.spinAxis
+    .set(
+      (Math.random() - 0.5) * 2,
+      (Math.random() - 0.5) * 2,
+      (Math.random() - 0.5) * 2
+    )
+    .normalize();
+
+  // Play a higher pitched sound for trick landing
+  createJumpSound();
+}
+
+// Update backspin animation (call this in the game loop)
+function updateBackspin() {
+  if (!gameState.player.spinning || !copilotModel) return;
+
+  gameState.player.spinProgress += gameState.player.spinSpeed;
+
+  // Apply easing function for smooth spin animation
+  // Using smoothstep for ease-in-out effect: 3t² - 2t³
+  const t = Math.min(gameState.player.spinProgress, 1);
+  const easedProgress = t * t * (3 - 2 * t);
+
+  // Create rotation around the random axis with easing
+  const spinAngle = easedProgress * Math.PI * 2; // Full 360 degree spin with easing
+
+  // Apply rotation around the random axis
+  copilotModel.setRotationFromAxisAngle(gameState.player.spinAxis, spinAngle);
+
+  // Stop spinning after one full rotation
+  if (gameState.player.spinProgress >= 1) {
+    gameState.player.spinning = false;
+    gameState.player.spinProgress = 0;
+    // Reset rotation to identity
+    copilotModel.rotation.set(0, 0, 0);
+  }
+}
+
+// ===========================================
 // GAME CONFIGURATION - Easy to change flags
 // ===========================================
 const ENABLE_CUBE_FALLING = true; // Set to false to disable falling cube behavior
@@ -1322,20 +1370,7 @@ function checkPlatformCollision() {
 
         // Start spin effect with random axis (only 20% chance) - play special sound
         if (Math.random() < 0.2) {
-          gameState.player.spinning = true;
-          gameState.player.spinProgress = 0;
-
-          // Generate a random spin axis (normalized)
-          gameState.player.spinAxis
-            .set(
-              (Math.random() - 0.5) * 2,
-              (Math.random() - 0.5) * 2,
-              (Math.random() - 0.5) * 2
-            )
-            .normalize();
-
-          // Play a higher pitched sound for trick landing
-          createJumpSound();
+          startBackspin();
         }
 
         return; // Exit after hitting any cube
@@ -1796,28 +1831,10 @@ function updateGame() {
   copilotModel.position.y = gameState.player.position.y;
 
   // Handle spinning animation
-  if (gameState.player.spinning) {
-    gameState.player.spinProgress += gameState.player.spinSpeed;
+  updateBackspin();
 
-    // Apply easing function for smooth spin animation
-    // Using smoothstep for ease-in-out effect: 3t² - 2t³
-    const t = Math.min(gameState.player.spinProgress, 1);
-    const easedProgress = t * t * (3 - 2 * t);
-
-    // Create rotation around the random axis with easing
-    const spinAngle = easedProgress * Math.PI * 2; // Full 360 degree spin with easing
-
-    // Apply rotation around the random axis
-    copilotModel.setRotationFromAxisAngle(gameState.player.spinAxis, spinAngle);
-
-    // Stop spinning after one full rotation
-    if (gameState.player.spinProgress >= 1) {
-      gameState.player.spinning = false;
-      gameState.player.spinProgress = 0;
-      // Reset rotation to identity
-      copilotModel.rotation.set(0, 0, 0);
-    }
-  } else {
+  // Handle non-spinning model animation
+  if (!gameState.player.spinning) {
     // Make the head face the direction of movement (only when not spinning)
     if (Math.abs(gameState.player.velocity.x) > 0.01) {
       // Smoothly rotate the head based on movement direction - increased rotation for more dramatic effect
