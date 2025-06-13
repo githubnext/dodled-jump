@@ -295,7 +295,7 @@ const CRTShader = {
     resolution: { value: new THREE.Vector2() },
     time: { value: 0.0 },
     aberrationStrength: { value: 0.003 },
-    scanlineIntensity: { value: 0.6 }, // Increased from 0.4 for more visible scanlines
+
     vignetteStrength: { value: 0.3 },
     noiseIntensity: { value: 0.08 },
     curvature: { value: 0.15 },
@@ -312,7 +312,6 @@ const CRTShader = {
     uniform vec2 resolution;
     uniform float time;
     uniform float aberrationStrength;
-    uniform float scanlineIntensity;
     uniform float vignetteStrength;
     uniform float noiseIntensity;
     uniform float curvature;
@@ -431,7 +430,7 @@ let backgroundMusic: AudioBufferSourceNode | null = null;
 let musicBuffer: AudioBuffer | null = null;
 let musicGainNode: GainNode | null = null;
 let isMuted = false;
-let musicFadeTimeout: number | null = null; // Track fade timeout for cleanup // Track mute state
+let musicFadeTimeout: number | null = null; // Track fade timeout for cleanup
 
 // Load and decode the background music
 async function loadBackgroundMusic() {
@@ -441,7 +440,6 @@ async function loadBackgroundMusic() {
     const response = await fetch("/8-bit-game-loop.wav");
     const arrayBuffer = await response.arrayBuffer();
     musicBuffer = await audioContext.decodeAudioData(arrayBuffer);
-    console.log("Background music loaded");
   } catch (error) {
     console.error("Error loading background music:", error);
   }
@@ -489,8 +487,6 @@ function startBackgroundMusic() {
       targetVolume,
       audioContext.currentTime + 1.2
     );
-
-    console.log("Background music started with fade in");
   } catch (error) {
     console.error("Error starting background music:", error);
   }
@@ -539,7 +535,6 @@ function stopBackgroundMusic() {
       }
 
       musicFadeTimeout = null;
-      console.log("Background music stopped with fade out");
     }, 600); // Wait for fade to complete
   } catch (error) {
     console.error("Error fading out background music:", error);
@@ -586,7 +581,6 @@ async function initializeAudio() {
       audioContext = new (window.AudioContext ||
         (window as any).webkitAudioContext)();
       isAudioInitialized = true;
-      console.log("Audio context initialized");
 
       // Load music immediately but don't start playing
       await loadBackgroundMusic();
@@ -879,8 +873,6 @@ const gameState = {
     duration: 0.6, // 0.6 seconds for much more snappy camera animation
     delay: 0.2, // 200ms delay before drop starts (reduced from 500ms)
     delayProgress: 0, // Track delay progress
-    startPosition: { x: 0, y: 0, z: 0 }, // Center position
-    targetPosition: { x: 0, y: 0, z: 0 }, // Will be set when animation starts
   },
   player: {
     velocity: { x: 0, y: 0 },
@@ -917,7 +909,6 @@ const gameState = {
       falling: boolean; // Track if this cube is falling
       fallVelocity: number; // Falling velocity for this cube
     }>;
-    colorIndex: number; // Store the color index for explosion matching
     platformIndex: number; // Platform creation index for consistent behavior
     // Movement properties for difficulty progression
     movement: {
@@ -935,7 +926,6 @@ const gameState = {
     maxLife: number;
   }>,
   nextPlatformY: 2,
-  platformSpacing: 3.5, // Increased from 2.5 for more spacing
   score: 0,
   highScore: 0,
   keys: {
@@ -1068,7 +1058,6 @@ function getDifficultyPlatformCubeCount(): number {
   if (score <= 10) {
     // Score 0-10: Mostly 4 cubes (80%), some 3 cubes (20%)
     const chance4 = 0.8 - (score / 10) * 0.3; // 80% to 50%
-    const chance3 = 1 - chance4; // 20% to 50%
     
     if (random < chance4) return 4;
     else return 3;
@@ -1076,7 +1065,6 @@ function getDifficultyPlatformCubeCount(): number {
     // Score 10-25: Mix of 4 and 3, trending toward 3
     const t = (score - 10) / (25 - 10);
     const chance4 = 0.5 - t * 0.4; // 50% to 10%
-    const chance3 = 1 - chance4; // 50% to 90%
     
     if (random < chance4) return 4;
     else return 3;
@@ -1084,7 +1072,6 @@ function getDifficultyPlatformCubeCount(): number {
     // Score 25-40: Mostly 3 cubes, some 2 cubes starting to appear
     const t = (score - 25) / (40 - 25);
     const chance3 = 0.9 - t * 0.4; // 90% to 50%
-    const chance2 = 1 - chance3; // 10% to 50%
     
     if (random < chance3) return 3;
     else return 2;
@@ -1092,7 +1079,6 @@ function getDifficultyPlatformCubeCount(): number {
     // Score 40-60: Mix of 3 and 2, trending toward 2
     const t = (score - 40) / (60 - 40);
     const chance3 = 0.5 - t * 0.4; // 50% to 10%
-    const chance2 = 1 - chance3; // 50% to 90%
     
     if (random < chance3) return 3;
     else return 2;
@@ -1100,7 +1086,6 @@ function getDifficultyPlatformCubeCount(): number {
     // Score 60-80: Mostly 2 cubes, some 1 cube starting to appear
     const t = (score - 60) / (80 - 60);
     const chance2 = 0.9 - t * 0.4; // 90% to 50%
-    const chance1 = 1 - chance2; // 10% to 50%
     
     if (random < chance2) return 2;
     else return 1;
@@ -1108,7 +1093,6 @@ function getDifficultyPlatformCubeCount(): number {
     // Score 80+: Mix of 2 and 1, trending toward 1 (extreme difficulty)
     const t = Math.min(1, (score - 80) / 40); // Cap progression at score 120
     const chance2 = 0.5 - t * 0.3; // 50% to 20%
-    const chance1 = 1 - chance2; // 50% to 80%
     
     if (random < chance2) return 2;
     else return 1;
@@ -1225,9 +1209,6 @@ function triggerGlitch() {
 
 // Create initial platforms
 function createPlatform(x: number, y: number) {
-  // Use platform count to cycle through colors
-  const colorIndex = gameState.platforms.length;
-
   // Get current difficulty-based properties
   const movementSpeed = getDifficultyMovementSpeed();
   const cubeCount = getDifficultyPlatformCubeCount();
@@ -1281,7 +1262,6 @@ function createPlatform(x: number, y: number) {
     position: { x, y },
     size: { width: platformWidth, height: cubeSize },
     cubes: cubes,
-    colorIndex: colorIndex, // Store the color index for explosion matching
     platformIndex: platformIndex, // Store platform creation index for consistent behavior
     movement: {
       enabled: false, // Will be determined dynamically
@@ -1428,7 +1408,6 @@ function startGame() {
   // Start music when game begins
   if (audioContext && audioContext.state === "suspended") {
     audioContext.resume().then(() => {
-      console.log("Audio context resumed");
       startBackgroundMusic();
     });
   } else if (audioContext && musicBuffer) {
@@ -1551,11 +1530,9 @@ function updateGame() {
   const particleSpreadZ = 10;
 
   // Calculate downward particle movement based on player's upward velocity
-  const baseDownwardSpeed = 0; // Base speed particles move down
-  const velocityMultiplier = gameState.gameStarted
+  const totalDownwardSpeed = gameState.gameStarted
     ? Math.max(0, gameState.player.velocity.y)
     : 0; // Only use velocity when game is active
-  const totalDownwardSpeed = baseDownwardSpeed + velocityMultiplier;
 
   for (let i = 0; i < particleCount; i++) {
     const i3 = i * 3;
@@ -2053,8 +2030,7 @@ function updateGame() {
       gameState.player.position.y + gameState.world.offset;
   }
 
-  // Add subtle parallax effect based on player movement
-  // No longer need to move camera, but we can add subtle screen shake or other effects here if desired
+
 
   // Generate more platforms as needed
   if (gameState.player.position.y > gameState.nextPlatformY - 20) {
@@ -2074,38 +2050,7 @@ function updateGame() {
   // Update score display
   scoreElement.textContent = `SCORE ${gameState.score}`;
 
-  // Debug: Count moving platforms periodically
-  if (
-    gameState.score > 0 &&
-    gameState.score % 5 === 0 &&
-    Math.random() < 0.02
-  ) {
-    const movingCount = gameState.platforms.filter(
-      (p) => p.movement.enabled
-    ).length;
-    const totalCount = gameState.platforms.length;
-    const expectedChance = getDifficultyMovementChance();
 
-    // Let's also check platform index distribution
-    const platformIndices = gameState.platforms.map((p) => p.platformIndex);
-    const minIndex = Math.min(...platformIndices);
-    const maxIndex = Math.max(...platformIndices);
-
-    console.log(
-      `Score: ${gameState.score}, Moving: ${movingCount}/${totalCount} (${(
-        (movingCount / totalCount) *
-        100
-      ).toFixed(1)}%), Expected: ${(expectedChance * 100).toFixed(1)}%`
-    );
-    console.log(
-      `Platform indices range: ${minIndex} to ${maxIndex}, Global counter: ${globalPlatformCounter}`
-    );
-    console.log(
-      `Movement threshold: platforms 0-${Math.floor(
-        expectedChance * 100 - 1
-      )} should move out of every 100`
-    );
-  }
 
   // Update high score display
   highScoreElement.textContent = `BEST ${gameState.highScore}`;
@@ -2202,9 +2147,6 @@ function updateGame() {
   Object.keys(keyPressed).forEach((key) => {
     keyPressed[key] = false;
   });
-
-  // Update cursor visibility based on game state
-  updateCursorVisibility();
 }
 
 // Generate initial platforms
@@ -2266,7 +2208,7 @@ scene.add(particles);
 // Particle animation variables
 let particleTime = 0;
 
-// Set up DRACO loader (even though we don't need it, Three.js expects it)
+// Set up DRACO loader for GLB model compression
 const dracoLoader = new DRACOLoader();
 dracoLoader.setDecoderPath(
   "https://www.gstatic.com/draco/versioned/decoders/1.5.6/"
@@ -2378,27 +2320,14 @@ loader.load(
     copilotModel.position.set(0, 0, 0);
 
     scene.add(copilotModel);
-    console.log(
-      "Copilot model loaded successfully with GitHub Copilot colors!"
-    );
-    console.log(`Applied GitHub Copilot colors to ${meshIndex} mesh parts`);
   },
-  (progress) => {
-    console.log(
-      "Loading progress:",
-      (progress.loaded / progress.total) * 100 + "%"
-    );
-  },
+  undefined, // No progress callback needed
   (error) => {
     console.error("Error loading GLB model:", error);
   }
 );
 
-// OrbitControls - disable for game mode
-// const controls = new OrbitControls(camera, renderer.domElement);
 
-// Remove old mouse interaction code since we're now a jumping game
-// const raycaster = new THREE.Raycaster();
 
 // Add UI for score display
 const scoreElement = document.createElement("div");
