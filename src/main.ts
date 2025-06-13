@@ -2449,8 +2449,18 @@ muteButtonElement.style.zIndex = "1000";
 muteButtonElement.style.cursor = "pointer";
 muteButtonElement.style.textShadow =
   "0 0 10px #00ff40, 0 0 20px #00ff40, 0 0 40px #00ff40, 0 0 80px #00ff40";
+muteButtonElement.style.userSelect = "none"; // Prevent text selection
+muteButtonElement.style.webkitUserSelect = "none"; // Safari
+muteButtonElement.style.touchAction = "manipulation"; // Improve touch responsiveness
 muteButtonElement.textContent = isMuted ? "SOUND OFF" : "SOUND ON";
+
 muteButtonElement.addEventListener("click", toggleMute);
+muteButtonElement.addEventListener("touchstart", (e) => {
+  e.stopPropagation(); // Prevent game touch handling
+  e.preventDefault();
+  toggleMute();
+}, { passive: false });
+
 document.body.appendChild(muteButtonElement);
 
 // Add UI for LGTM 2025 text
@@ -2648,7 +2658,7 @@ function updateResponsiveUI() {
   }
   
   if (lgtmElement) {
-    lgtmElement.style.bottom = `${spacing}px`;
+    lgtmElement.style.bottom = `${spacing * 0.8}px`;
     lgtmElement.style.right = `${spacing}px`;
   }
   
