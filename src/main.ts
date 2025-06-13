@@ -112,19 +112,52 @@ function createSpaceBackground() {
 const spaceBackground = createSpaceBackground();
 scene.add(spaceBackground);
 
-// Set up the camera
+// Calculate responsive field of view based on screen size
+function getResponsiveFOV(): number {
+  const minFOV = 60; // Current desktop FOV
+  const maxFOV = 100; // Wider view for small screens to fit more content
+  const minWidth = 320; // Minimum expected screen width
+  const maxWidth = 1200; // Width at which we reach min FOV
+  
+  const screenWidth = Math.min(window.innerWidth, window.innerHeight * 1.5);
+  const fov = minFOV + (maxFOV - minFOV) * 
+    Math.min(1, Math.max(0, (maxWidth - screenWidth) / (maxWidth - minWidth)));
+  
+  return fov;
+}
+
+// Calculate responsive camera positions based on screen size
+function getResponsiveCameraPositions() {
+  const minIntroZ = 3.0; // Current desktop intro position
+  const maxIntroZ = 4.0; // Further back for mobile
+  const minGameZ = 10.0; // Current desktop game position
+  const maxGameZ = 13.0; // Further back for mobile
+  const minWidth = 320;
+  const maxWidth = 1200;
+  
+  const screenWidth = Math.min(window.innerWidth, window.innerHeight * 1.5);
+  const t = Math.min(1, Math.max(0, (maxWidth - screenWidth) / (maxWidth - minWidth)));
+  
+  return {
+    introZ: minIntroZ + (maxIntroZ - minIntroZ) * t,
+    gameZ: minGameZ + (maxGameZ - minGameZ) * t
+  };
+}
+
+// Camera state for intro/game transitions
+const cameraPositions = getResponsiveCameraPositions();
+
+// Set up the camera with responsive FOV
 const camera = new THREE.PerspectiveCamera(
-  60, // Reduced FOV for more perspective depth
+  getResponsiveFOV(), // Responsive FOV for better mobile scaling
   window.innerWidth / window.innerHeight,
   0.1,
   1000
 );
-camera.position.set(0, 0, 10); // Moved camera back for better perspective
-
-// Camera state for intro/game transitions
+camera.position.set(0, 0, cameraPositions.gameZ); // Responsive camera position
 const cameraState = {
-  introPosition: { x: 0, y: 0, z: 3 }, // Closer position for intro
-  gamePosition: { x: 0, y: 0, z: 10 }, // Normal game position
+  introPosition: { x: 0, y: 0, z: cameraPositions.introZ }, // Responsive intro position
+  gamePosition: { x: 0, y: 0, z: cameraPositions.gameZ }, // Responsive game position
   animating: false,
   animationProgress: 0,
   animationDuration: 0.6, // 0.6 seconds for much more snappy camera animation
@@ -152,12 +185,40 @@ const composer = new EffectComposer(renderer);
 const renderPass = new RenderPass(scene, camera);
 composer.addPass(renderPass);
 
+// Calculate responsive pixel size based on screen size
+function getResponsivePixelSize(): number {
+  const minPixelSize = 2.0; // Smaller pixels for mobile
+  const maxPixelSize = 8.0; // Current desktop pixel size
+  const minWidth = 320; // Minimum expected screen width
+  const maxWidth = 1200; // Width at which we reach max pixel size
+  
+  const screenWidth = Math.min(window.innerWidth, window.innerHeight * 1.5);
+  const pixelSize = minPixelSize + (maxPixelSize - minPixelSize) * 
+    Math.min(1, Math.max(0, (screenWidth - minWidth) / (maxWidth - minWidth)));
+  
+  return pixelSize;
+}
+
+// Calculate responsive scanline size based on screen size
+function getResponsiveScanlineSize(): number {
+  const minScanlineSize = 2; // Thinner scanlines for mobile
+  const maxScanlineSize = 5; // Current desktop scanline size
+  const minWidth = 320; // Minimum expected screen width
+  const maxWidth = 1200; // Width at which we reach max scanline size
+  
+  const screenWidth = Math.min(window.innerWidth, window.innerHeight * 1.5);
+  const scanlineSize = minScanlineSize + (maxScanlineSize - minScanlineSize) * 
+    Math.min(1, Math.max(0, (screenWidth - minWidth) / (maxWidth - minWidth)));
+  
+  return Math.round(scanlineSize);
+}
+
 // Custom pixelation shader
 const PixelShader = {
   uniforms: {
     tDiffuse: { value: null },
     resolution: { value: new THREE.Vector2() },
-    pixelSize: { value: 8.0 }, // Reduced from 12.0 for finer pixelation
+    pixelSize: { value: getResponsivePixelSize() }, // Responsive pixel size
   },
   vertexShader: `
     varying vec2 vUv;
@@ -405,6 +466,17 @@ if (appElement) {
 const crtOverlay = document.createElement("div");
 crtOverlay.className = "crt-overlay";
 document.body.appendChild(crtOverlay);
+
+// Function to update scanline size responsively
+function updateScanlineSize() {
+  const scanlineSize = getResponsiveScanlineSize();
+  if (crtOverlay) {
+    crtOverlay.style.backgroundSize = `100% ${scanlineSize}px`;
+  }
+}
+
+// Apply initial scanline size
+updateScanlineSize();
 
 // Add lighting for platform shading
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.3); // Soft ambient light
@@ -2112,6 +2184,8 @@ function updateGame() {
     });
     gameState.explosions = [];
 
+
+
     // Reset particle positions around the reset world position with better distribution
     const positions = particles.geometry.attributes.position
       .array as Float32Array;
@@ -2194,8 +2268,22 @@ particleGeometry.setAttribute(
   new THREE.BufferAttribute(particleColorsArray, 3)
 );
 
+// Calculate responsive particle size
+function getResponsiveParticleSize(): number {
+  const minSize = 0.08; // Smaller particles for mobile
+  const maxSize = 0.15; // Current desktop size
+  const minWidth = 320;
+  const maxWidth = 1200;
+  
+  const screenWidth = Math.min(window.innerWidth, window.innerHeight * 1.5);
+  const size = minSize + (maxSize - minSize) * 
+    Math.min(1, Math.max(0, (screenWidth - minWidth) / (maxWidth - minWidth)));
+  
+  return size;
+}
+
 const particleMaterial = new THREE.PointsMaterial({
-  size: 0.15, // Slightly larger for better star visibility
+  size: getResponsiveParticleSize(), // Responsive particle size
   vertexColors: true,
   transparent: true,
   opacity: 0.9, // Higher opacity for brighter stars
@@ -2332,10 +2420,7 @@ loader.load(
 // Add UI for score display
 const scoreElement = document.createElement("div");
 scoreElement.style.position = "fixed";
-scoreElement.style.top = "50px";
-scoreElement.style.right = "70px"; // Changed from left to right
 scoreElement.style.color = "#00ff40";
-scoreElement.style.fontSize = "40px";
 scoreElement.style.fontFamily = "'DepartureMono', 'Courier New', monospace";
 scoreElement.style.zIndex = "1000";
 scoreElement.style.textShadow =
@@ -2346,10 +2431,7 @@ document.body.appendChild(scoreElement);
 // Add UI for high score display
 const highScoreElement = document.createElement("div");
 highScoreElement.style.position = "fixed";
-highScoreElement.style.top = "50px";
-highScoreElement.style.left = "70px";
 highScoreElement.style.color = "#00ff40";
-highScoreElement.style.fontSize = "40px";
 highScoreElement.style.fontFamily = "'DepartureMono', 'Courier New', monospace";
 highScoreElement.style.zIndex = "1000";
 highScoreElement.style.textShadow =
@@ -2360,10 +2442,7 @@ document.body.appendChild(highScoreElement);
 // Add UI for mute button
 const muteButtonElement = document.createElement("div");
 muteButtonElement.style.position = "fixed";
-muteButtonElement.style.bottom = "50px";
-muteButtonElement.style.left = "70px";
 muteButtonElement.style.color = "#00ff40";
-muteButtonElement.style.fontSize = "40px";
 muteButtonElement.style.fontFamily =
   "'DepartureMono', 'Courier New', monospace";
 muteButtonElement.style.zIndex = "1000";
@@ -2377,10 +2456,7 @@ document.body.appendChild(muteButtonElement);
 // Add UI for LGTM 2025 text
 const lgtmElement = document.createElement("div");
 lgtmElement.style.position = "fixed";
-lgtmElement.style.bottom = "50px";
-lgtmElement.style.right = "70px";
 lgtmElement.style.color = "#00ff40";
-lgtmElement.style.fontSize = "40px";
 lgtmElement.style.fontFamily = "'DepartureMono', 'Courier New', monospace";
 lgtmElement.style.zIndex = "1000";
 lgtmElement.style.textShadow =
@@ -2391,11 +2467,12 @@ document.body.appendChild(lgtmElement);
 // Add UI for start game prompt
 const startPromptElement = document.createElement("div");
 startPromptElement.style.position = "fixed";
-startPromptElement.style.bottom = "20%";
+startPromptElement.style.bottom = "25%";
 startPromptElement.style.left = "50%";
 startPromptElement.style.transform = "translateX(-50%)";
+startPromptElement.style.width = "100%";
+
 startPromptElement.style.color = "#00ff40";
-startPromptElement.style.fontSize = "40px";
 startPromptElement.style.fontFamily =
   "'DepartureMono', 'Courier New', monospace";
 startPromptElement.style.zIndex = "1000";
@@ -2403,13 +2480,44 @@ startPromptElement.style.textAlign = "center";
 startPromptElement.style.cursor = "pointer";
 startPromptElement.style.textShadow =
   "0 0 10px #00ff40, 0 0 20px #00ff40, 0 0 40px #00ff40, 0 0 80px #00ff40";
-startPromptElement.innerHTML = "PRESS SPACE TO START";
+// Update text based on device type
+const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || 
+  ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+startPromptElement.innerHTML = isMobileDevice ? "TAP AND HOLD TO PLAY" : "PRESS SPACE TO START";
 startPromptElement.addEventListener("click", () => {
   if (!gameState.gameStarted) {
     startGame();
   }
 });
 document.body.appendChild(startPromptElement);
+
+
+
+// Ensure proper mobile viewport configuration
+function setupMobileViewport() {
+  // Add or update viewport meta tag for mobile optimization
+  let viewportMeta = document.querySelector('meta[name="viewport"]') as HTMLMetaElement;
+  
+  if (!viewportMeta) {
+    viewportMeta = document.createElement('meta');
+    viewportMeta.name = 'viewport';
+    document.head.appendChild(viewportMeta);
+  }
+  
+  // Set mobile-optimized viewport settings
+  viewportMeta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no';
+  
+  // Prevent double-tap zoom on mobile
+  document.addEventListener('gesturestart', (e) => e.preventDefault());
+  document.addEventListener('gesturechange', (e) => e.preventDefault());
+  document.addEventListener('gestureend', (e) => e.preventDefault());
+}
+
+// Setup mobile viewport
+setupMobileViewport();
+
+// Apply initial responsive styling
+updateResponsiveUI();
 
 // Initialize audio immediately on page load
 initializeAudio();
@@ -2441,6 +2549,8 @@ animate();
 
 // Handle resizing
 window.addEventListener("resize", () => {
+  // Update camera with responsive FOV
+  camera.fov = getResponsiveFOV();
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
@@ -2452,9 +2562,228 @@ window.addEventListener("resize", () => {
     window.innerWidth,
     window.innerHeight
   );
+  
+  // Update responsive pixel size
+  pixelPass.uniforms.pixelSize.value = getResponsivePixelSize();
+  
+  // Update responsive camera positions
+  const newCameraPositions = getResponsiveCameraPositions();
+  cameraState.introPosition.z = newCameraPositions.introZ;
+  cameraState.gamePosition.z = newCameraPositions.gameZ;
+  
+  // Update particle size
+  particles.material.size = getResponsiveParticleSize();
+  
   glitchPass.uniforms.resolution.value.set(
     window.innerWidth,
     window.innerHeight
   );
   crtPass.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
+  
+  // Update responsive UI on resize (including orientation changes)
+  updateResponsiveUI();
 });
+
+// ===========================================
+// RESPONSIVE UI UTILITIES
+// ===========================================
+
+// Calculate responsive font size based on screen size
+function getResponsiveFontSize(): number {
+  const minSize = 16; // Minimum font size
+  const maxSize = 40; // Maximum font size (current desktop size)
+  const minWidth = 320; // Minimum expected screen width
+  const maxWidth = 1200; // Width at which we reach max font size
+  
+  const screenWidth = Math.min(window.innerWidth, window.innerHeight * 1.5); // Consider both portrait and landscape
+  const fontSize = minSize + (maxSize - minSize) * 
+    Math.min(1, Math.max(0, (screenWidth - minWidth) / (maxWidth - minWidth)));
+  
+  return Math.round(fontSize);
+}
+
+// Calculate responsive spacing based on screen size
+function getResponsiveSpacing(): number {
+  const minSpacing = 15; // Minimum spacing
+  const maxSpacing = 70; // Maximum spacing (current desktop)
+  const minWidth = 320;
+  const maxWidth = 1200;
+  
+  const screenWidth = Math.min(window.innerWidth, window.innerHeight * 1.5);
+  const spacing = minSpacing + (maxSpacing - minSpacing) * 
+    Math.min(1, Math.max(0, (screenWidth - minWidth) / (maxWidth - minWidth)));
+  
+  return Math.round(spacing);
+}
+
+// Update all UI element styles to be responsive
+function updateResponsiveUI() {
+  const fontSize = getResponsiveFontSize();
+  const spacing = getResponsiveSpacing();
+  const fontSizeStyle = `${fontSize}px`;
+  
+  // Update all text elements
+  [scoreElement, highScoreElement, muteButtonElement, lgtmElement, startPromptElement].forEach(element => {
+    if (element) {
+      element.style.fontSize = fontSizeStyle;
+    }
+  });
+  
+
+  
+  // Update positioning
+  if (scoreElement) {
+    scoreElement.style.top = `${spacing * 0.8}px`;
+    scoreElement.style.right = `${spacing}px`;
+  }
+  
+  if (highScoreElement) {
+    highScoreElement.style.top = `${spacing * 0.8}px`;
+    highScoreElement.style.left = `${spacing}px`;
+  }
+  
+  if (muteButtonElement) {
+    muteButtonElement.style.bottom = `${spacing * 0.8}px`;
+    muteButtonElement.style.left = `${spacing}px`;
+  }
+  
+  if (lgtmElement) {
+    lgtmElement.style.bottom = `${spacing}px`;
+    lgtmElement.style.right = `${spacing}px`;
+  }
+  
+  // Update scanline size
+  updateScanlineSize();
+}
+
+// ===========================================
+// TOUCH CONTROLS FOR MOBILE
+// ===========================================
+
+let touchStartX = 0;
+let touchStartY = 0;
+let touchStartTime = 0;
+let isTouching = false;
+let lastTouchX = 0;
+let lastTouchY = 0;
+let hasTriggeredDoubleJump = false; // Track if double jump was triggered in this touch session
+let touchMoveThreshold = 1; // Minimum distance for movement recognition (more sensitive)
+let hasMoved = false; // Track if finger has moved significantly
+
+
+
+// Touch control handlers
+function handleTouchStart(event: TouchEvent) {
+  event.preventDefault();
+  if (event.touches.length > 0) {
+    const touch = event.touches[0];
+    touchStartX = touch.clientX;
+    touchStartY = touch.clientY;
+    touchStartTime = Date.now();
+    lastTouchX = touch.clientX;
+    lastTouchY = touch.clientY;
+    isTouching = true;
+    hasTriggeredDoubleJump = false; // Reset double jump flag
+    hasMoved = false; // Reset movement tracking
+    
+    // Handle game start on touch
+    if (!gameState.gameStarted && !gameState.introAnimation.active) {
+      startGame();
+      return;
+    }
+    
+    // Don't trigger jump immediately - wait to see if it's a tap or drag
+  }
+}
+
+function handleTouchMove(event: TouchEvent) {
+  event.preventDefault();
+  if (!isTouching || event.touches.length === 0 || !gameState.gameStarted) return;
+  
+  const touch = event.touches[0];
+  const currentX = touch.clientX;
+  const currentY = touch.clientY;
+  
+  // Calculate movement from last touch position (for continuous movement)
+  const deltaX = currentX - lastTouchX;
+  const deltaY = lastTouchY - currentY; // Inverted Y (up is positive)
+  
+  // Calculate total movement from start (for tap detection)
+  const totalDeltaX = Math.abs(currentX - touchStartX);
+  const totalDeltaY = Math.abs(currentY - touchStartY);
+  const totalMovement = Math.sqrt(totalDeltaX * totalDeltaX + totalDeltaY * totalDeltaY);
+  
+  // Track if significant movement has occurred (for tap detection)
+  if (totalMovement > 15) {
+    hasMoved = true;
+  }
+  
+  // Clear previous movement keys
+  gameState.keys.left = false;
+  gameState.keys.right = false;
+  
+  // Horizontal movement based on current drag direction
+  if (Math.abs(deltaX) > touchMoveThreshold) {
+    if (deltaX < 0) {
+      gameState.keys.left = true; // Moving left
+    } else {
+      gameState.keys.right = true; // Moving right
+    }
+  }
+  
+  // Check for upward flick (fast upward movement)
+  const currentTime = Date.now();
+  const timeDelta = currentTime - touchStartTime;
+  const upwardFlickY = touchStartY - currentY; // Upward movement from start
+  
+  // Detect upward flick: fast upward movement in short time
+  if (upwardFlickY > 30 && timeDelta < 200 && !hasTriggeredDoubleJump) {
+    // Check if double jump is available
+    if (gameState.player.doubleJumpAvailable && !gameState.player.hasDoubleJumped) {
+      gameState.keys.up = true;
+      hasTriggeredDoubleJump = true; // Prevent multiple double jumps in one touch session
+      
+      // Small delay to register the jump, then clear the key
+      setTimeout(() => {
+        gameState.keys.up = false;
+      }, 50);
+    }
+  }
+  
+  // Update last touch position for next frame
+  lastTouchX = currentX;
+  lastTouchY = currentY;
+}
+
+function handleTouchEnd(event: TouchEvent) {
+  event.preventDefault();
+  
+  // Check for tap (quick touch without much movement) for jump/double jump
+  if (gameState.gameStarted && !hasTriggeredDoubleJump && !hasMoved) {
+    const touchDuration = Date.now() - touchStartTime;
+    
+    // If it was a quick tap (under 300ms) and no significant movement
+    if (touchDuration < 300) {
+      // Trigger the jump key press - let the game logic decide if it's regular or double jump
+      gameState.keys.up = true;
+      keyPressed["Space"] = true; // This triggers the double jump logic in updateGame()
+      setTimeout(() => {
+        gameState.keys.up = false;
+      }, 50);
+    }
+  }
+  
+  isTouching = false;
+  hasTriggeredDoubleJump = false;
+  hasMoved = false;
+  
+  // Clear movement keys
+  gameState.keys.left = false;
+  gameState.keys.right = false;
+  gameState.keys.up = false;
+}
+
+// Add touch event listeners
+window.addEventListener('touchstart', handleTouchStart, { passive: false });
+window.addEventListener('touchmove', handleTouchMove, { passive: false });
+window.addEventListener('touchend', handleTouchEnd, { passive: false });

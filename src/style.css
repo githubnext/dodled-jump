@@ -58,7 +58,7 @@ canvas {
   z-index: 9999; /* Ensure it's on top of everything */
   opacity: 0.6; /* Adjust opacity to control scanline intensity */
   background: linear-gradient(transparent 50%, rgba(0, 0, 0, 0.4) 50%);
-  background-size: 100% 5px; /* Adjust 5px to control scanline thickness */
+  /* background-size will be set dynamically by JavaScript for responsive scaling */
   animation: crt-flicker 0.15s linear infinite;
 }
 
