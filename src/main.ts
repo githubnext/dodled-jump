@@ -1057,34 +1057,61 @@ function getDifficultyPlatformSpacing(): number {
   }
 }
 
-function getDifficultyMovementRange(): number {
-  // Gradually increase how far platforms move
-  // At score 0: 2-3 range
-  // At score 20: 2-4 range
-  // At score 40+: 2-5 range (cap)
-  const baseRange = Math.min(5, 3 + (gameState.score / 40) * 2);
-  const minRange = 2;
-  return minRange + Math.random() * (baseRange - minRange);
-}
+
 
 function getDifficultyPlatformCubeCount(): number {
-  // Gradually decrease number of cubes to make precision more important
-  // At score 0: 4 cubes (easy)
-  // At score 25: 3 cubes
-  // At score 50+: 2 cubes (cap - still reasonable)
+  // Gradually blend cube counts using probability-based selection
+  // More natural transition from mostly 4 cubes to mostly 3, then mostly 2, then some 1
   const score = gameState.score;
+  const random = Math.random();
 
-  if (score <= 25) {
-    // Score 0-25: 4 to 3 cubes
-    const t = score / 25;
-    return Math.floor(4 - t * 1); // 4 to 3
-  } else if (score <= 50) {
-    // Score 25-50: 3 to 2 cubes
-    const t = (score - 25) / 25;
-    return Math.floor(3 - t * 1); // 3 to 2
+  if (score <= 10) {
+    // Score 0-10: Mostly 4 cubes (80%), some 3 cubes (20%)
+    const chance4 = 0.8 - (score / 10) * 0.3; // 80% to 50%
+    const chance3 = 1 - chance4; // 20% to 50%
+    
+    if (random < chance4) return 4;
+    else return 3;
+  } else if (score <= 25) {
+    // Score 10-25: Mix of 4 and 3, trending toward 3
+    const t = (score - 10) / (25 - 10);
+    const chance4 = 0.5 - t * 0.4; // 50% to 10%
+    const chance3 = 1 - chance4; // 50% to 90%
+    
+    if (random < chance4) return 4;
+    else return 3;
+  } else if (score <= 40) {
+    // Score 25-40: Mostly 3 cubes, some 2 cubes starting to appear
+    const t = (score - 25) / (40 - 25);
+    const chance3 = 0.9 - t * 0.4; // 90% to 50%
+    const chance2 = 1 - chance3; // 10% to 50%
+    
+    if (random < chance3) return 3;
+    else return 2;
+  } else if (score <= 60) {
+    // Score 40-60: Mix of 3 and 2, trending toward 2
+    const t = (score - 40) / (60 - 40);
+    const chance3 = 0.5 - t * 0.4; // 50% to 10%
+    const chance2 = 1 - chance3; // 50% to 90%
+    
+    if (random < chance3) return 3;
+    else return 2;
+  } else if (score <= 80) {
+    // Score 60-80: Mostly 2 cubes, some 1 cube starting to appear
+    const t = (score - 60) / (80 - 60);
+    const chance2 = 0.9 - t * 0.4; // 90% to 50%
+    const chance1 = 1 - chance2; // 10% to 50%
+    
+    if (random < chance2) return 2;
+    else return 1;
   } else {
-    // Score 50+: cap at 2 cubes
-    return 2;
+    // Score 80+: Mix of 2 and 1, trending toward 1 (extreme difficulty)
+    const t = Math.min(1, (score - 80) / 40); // Cap progression at score 120
+    const chance2 = 0.5 - t * 0.3; // 50% to 20%
+    const chance1 = 1 - chance2; // 50% to 80%
+    
+    if (random < chance2) return 2;
+    else return 1;
   }
 }
 
@@ -1203,29 +1230,22 @@ function createPlatform(x: number, y: number) {
 
   // Get current difficulty-based properties
   const movementSpeed = getDifficultyMovementSpeed();
-  let movementRange = getDifficultyMovementRange();
   const cubeCount = getDifficultyPlatformCubeCount();
+  
+  // Calculate full viewport width for movement range
+  const viewportHalfWidth =
+    camera.aspect *
+    Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) *
+    camera.position.z;
+  const movementRange = viewportHalfWidth * 2;
 
   // Each cube is 1x1x1 unit
   const cubeSize = 1;
   const cubeSpacing = 1.1; // Smaller gap between cubes
   const platformWidth = cubeCount * cubeSpacing;
 
-  // Calculate viewport bounds to ensure movement range doesn't exceed visible area
-  const viewportHalfWidth =
-    camera.aspect *
-    Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) *
-    camera.position.z;
-
-  const platformHalfWidth = platformWidth / 2;
-  const maxAllowedRange = Math.min(
-    movementRange,
-    Math.abs(x - (-viewportHalfWidth + platformHalfWidth)), // Distance to left edge
-    Math.abs(x - (viewportHalfWidth - platformHalfWidth)) // Distance to right edge
-  );
-
-  // Ensure we have at least some movement range, but not more than viewport allows
-  movementRange = Math.max(0.5, maxAllowedRange);
+  // Movement range is already calculated as full viewport width in getDifficultyMovementRange()
+  // Runtime bounds checking in updateGame() will handle keeping platforms on screen
 
   // Use global counter for consistent indexing across all platforms ever created
   const platformIndex = globalPlatformCounter++;
