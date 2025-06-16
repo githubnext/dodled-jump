@@ -29,7 +29,7 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           update_existing: true
-          max_edits: 2
+          max_edits: 10
       # Show the changes made by the action
       - name: show changes
         run: |
