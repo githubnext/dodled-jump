@@ -12,7 +12,10 @@ import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPa
 // Set up the scene
 const scene = new THREE.Scene();
 
-// Create atmospheric space background
+/**
+ * Creates an atmospheric space background mesh with a gradient and subtle noise effects to simulate a nebula-like space atmosphere, including sparse distant stars.
+ * @returns A THREE.Mesh representing the space background.
+ */
 function createSpaceBackground() {
   // Create background geometry - a large sphere that encompasses the scene
   const backgroundGeometry = new THREE.SphereGeometry(500, 32, 16);
@@ -112,7 +115,11 @@ function createSpaceBackground() {
 const spaceBackground = createSpaceBackground();
 scene.add(spaceBackground);
 
-// Calculate responsive field of view based on screen size
+/**
+ * Calculates a responsive field of view based on the current screen size.
+ * Adjusts the FOV between a minimum and maximum value depending on the screen width.
+ * @returns The calculated field of view value.
+ */
 function getResponsiveFOV(): number {
   const minFOV = 60; // Current desktop FOV
   const maxFOV = 100; // Wider view for small screens to fit more content
@@ -126,7 +133,10 @@ function getResponsiveFOV(): number {
   return fov;
 }
 
-// Calculate responsive camera positions based on screen size
+/**
+ * Calculates responsive camera positions for intro and game views based on the current screen size.
+ * @returns An object containing the calculated introZ and gameZ camera positions.
+ */
 function getResponsiveCameraPositions() {
   const minIntroZ = 3.0; // Current desktop intro position
   const maxIntroZ = 4.0; // Further back for mobile
@@ -185,7 +195,11 @@ const composer = new EffectComposer(renderer);
 const renderPass = new RenderPass(scene, camera);
 composer.addPass(renderPass);
 
-// Calculate responsive pixel size based on screen size
+/**
+ * Calculates a responsive pixel size based on the current screen dimensions.
+ * Returns a pixel size interpolated between minimum and maximum values depending on the screen width.
+ * @returns The calculated responsive pixel size.
+ */
 function getResponsivePixelSize(): number {
   const minPixelSize = 2.0; // Smaller pixels for mobile
   const maxPixelSize = 8.0; // Current desktop pixel size
@@ -199,7 +213,10 @@ function getResponsivePixelSize(): number {
   return pixelSize;
 }
 
-// Calculate responsive scanline size based on screen size
+/**
+ * Calculates a responsive scanline size based on the current screen dimensions.
+ * @returns The calculated scanline size rounded to the nearest integer.
+ */
 function getResponsiveScanlineSize(): number {
   const minScanlineSize = 2; // Thinner scanlines for mobile
   const maxScanlineSize = 5; // Current desktop scanline size
@@ -504,7 +521,10 @@ let musicGainNode: GainNode | null = null;
 let isMuted = false;
 let musicFadeTimeout: number | null = null; // Track fade timeout for cleanup
 
-// Load and decode the background music
+/**
+ * Loads and decodes the background music file, storing it in the music buffer.
+ * Logs an error to the console if loading fails.
+ */
 async function loadBackgroundMusic() {
   if (!audioContext) return;
 
@@ -517,7 +537,9 @@ async function loadBackgroundMusic() {
   }
 }
 
-// Start playing background music
+/**
+ * Starts playing the background music if not already playing. Handles fade-in, looping, and restarts music if it ends unexpectedly while the game is running.
+ */
 function startBackgroundMusic() {
   if (!audioContext || !musicBuffer || backgroundMusic) return;
 
@@ -564,7 +586,9 @@ function startBackgroundMusic() {
   }
 }
 
-// Stop background music
+/**
+ * Stops the background music by fading it out over 0.6 seconds, then disconnects and cleans up the audio nodes.
+ */
 function stopBackgroundMusic() {
   if (!backgroundMusic || !musicGainNode || !audioContext) return;
 
@@ -613,7 +637,9 @@ function stopBackgroundMusic() {
   }
 }
 
-// Toggle mute state
+/**
+ * Toggles the mute state for the music, fading the volume in or out over 0.3 seconds, and updates the mute button text accordingly.
+ */
 function toggleMute() {
   isMuted = !isMuted;
 
@@ -646,7 +672,10 @@ function toggleMute() {
   }
 }
 
-// Initialize audio context (must be done after user interaction)
+/**
+ * Initializes the audio context if it has not been initialized yet.
+ * Loads background music without starting playback.
+ */
 async function initializeAudio() {
   if (!isAudioInitialized) {
     try {
